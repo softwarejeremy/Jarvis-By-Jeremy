@@ -1,0 +1,123 @@
+# Copia este archivo a `config.toml` y ajusta lo que quieras.
+# Todo tiene valores por defecto sensatos: puedes borrar lo que no toques.
+# Los secretos NO van aquí, van en `.env`.
+#
+# Cualquier ajuste se puede sobrescribir por entorno con doble guion bajo:
+#     JARVIS_TTS__VOICE=es-ES-AlvaroNeural
+
+# Carpeta donde J.A.R.V.I.S. guarda memoria y sesiones.
+# data_dir = "C:/Users/TU-USUARIO/.jarvis"
+
+# Carpeta de trabajo por defecto. También es la única donde puede escribir,
+# salvo que añadas más en [permissions].
+# workspace = "C:/Users/TU-USUARIO/Proyectos"
+
+
+[agent]
+# claude-opus-5 es el más capaz. claude-sonnet-5 cuesta bastante menos
+# ($3/$15 por millón de tokens frente a $5/$25) y para conversar va sobrado.
+model = "claude-opus-5"
+
+# Cuánto piensa antes de responder: low | medium | high | xhigh | max
+# Para hablar por voz, "low" es lo correcto: la latencia importa más que
+# la elaboración. Súbelo si le vas a pedir tareas de programación serias.
+effort = "low"
+
+# Tope de gasto por sesión, en dólares. Al alcanzarlo, el SDK corta.
+# Referencia medida: ~$0.02 por turno de conversación con Opus 5.
+max_budget_usd = 2.0
+
+# Cómo se dirige a ti.
+user_name = "señor"
+
+# Carpetas extra que puede LEER (para escribir, mira [permissions]).
+# extra_dirs = ["C:/Users/TU-USUARIO/Documents"]
+
+
+[tts]
+# edge   -> neuronal, gratis, sin cuenta, necesita internet   (recomendado)
+# sapi   -> voz de Windows, peor calidad, funciona sin internet
+# elevenlabs -> la mejor, de pago, necesita ELEVENLABS_API_KEY en .env
+engine = "edge"
+
+# Voces de edge-tts en español:
+#   es-MX-JorgeNeural   masculina, mexicana, grave     <- por defecto
+#   es-ES-AlvaroNeural  masculina, España
+#   es-MX-DaliaNeural   femenina, mexicana
+#   es-AR-TomasNeural   masculina, argentina
+voice = "es-MX-JorgeNeural"
+
+# J.A.R.V.I.S. suena mejor un poco acelerado y algo más grave.
+rate = "+8%"
+pitch = "-4Hz"
+
+
+[stt]
+# tiny | base | small | medium | large-v3
+# "small" es el punto dulce en CPU para español.
+# "tiny" si tu equipo va justo; "medium" o superior sólo con GPU NVIDIA.
+model_size = "small"
+
+# cpu | cuda | auto   ("auto" usa la GPU si la encuentra)
+device = "auto"
+
+language = "es"
+
+
+[vad]
+# Cuánto silencio espera antes de dar por terminada tu frase, en ms.
+# BÁJALO si sientes que tarda en contestar.
+# SÚBELO si te corta a media frase.
+silence_ms = 700
+
+# Ignora ruidos más cortos que esto (una tos, un golpe en la mesa).
+min_speech_ms = 250
+
+# Sensibilidad: 0.0 a 1.0. Bájalo si no te oye, súbelo si le sobra ruido.
+threshold = 0.5
+
+
+[wakeword]
+# Ponlo en false si prefieres usar sólo el atajo de teclado.
+enabled = true
+
+# Sube a 0.7 si se activa solo; baja a 0.4 si te cuesta despertarlo.
+threshold = 0.5
+
+
+[hotkey]
+enabled = true
+# Sintaxis de pynput. Ejemplos: "<ctrl>+<alt>+j", "<f9>", "<ctrl>+<shift>+espacio"
+combo = "<ctrl>+<alt>+j"
+
+
+[audio]
+# Número del dispositivo, según `python -m jarvis --diag`.
+# Déjalo comentado para usar el que tenga Windows por defecto.
+# input_device = 1
+# output_device = 3
+
+# Permite interrumpir a J.A.R.V.I.S. hablándole encima.
+# IMPORTANTE: con altavoces (sin auriculares) el micrófono capta su propia
+# voz y puede interrumpirse a sí mismo. Si te pasa, ponlo en false.
+barge_in = true
+
+
+[permissions]
+# Carpetas donde SÍ puede escribir y borrar. Fuera de estas y del workspace,
+# se deniega sin ni siquiera preguntarte.
+# En Windows usa barras normales, no invertidas.
+# writable_paths = [
+#     "C:/Users/TU-USUARIO/Documents/Jarvis",
+#     "C:/Users/TU-USUARIO/Desktop",
+# ]
+
+# Segundos que espera tu "sí" antes de denegar por defecto.
+confirm_timeout_s = 12.0
+
+# Herramientas que se ejecutan sin preguntar (todas de sólo lectura).
+# auto_allow = ["Read", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite", "Task"]
+
+# Herramientas que SIEMPRE exigen tu confirmación hablada.
+# Quitar "Bash" de esta lista es una muy mala idea.
+# confirm = ["Write", "Edit", "NotebookEdit", "Bash", "KillShell"]

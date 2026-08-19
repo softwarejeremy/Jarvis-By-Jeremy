@@ -1,0 +1,30 @@
+# Secretos — NUNCA subir
+.env
+config.toml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# Datos locales de J.A.R.V.I.S.
+.jarvis/
+*.wav.out
+salida_tts/
+
+# Modelos descargados
+models/
+*.onnx
+*.tflite
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

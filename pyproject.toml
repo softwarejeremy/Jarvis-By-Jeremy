@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jarvis"
+version = "0.3.0"
+description = "J.A.R.V.I.S. — asistente de voz construido sobre el Claude Agent SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# Núcleo: lo mínimo para conversar con J.A.R.V.I.S. por texto.
+# Todo lo de audio vive en el extra `voice` para que los tests y la CI
+# corran sin tarjeta de sonido ni modelos pesados.
+dependencies = [
+    "claude-agent-sdk>=0.2.140",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dotenv>=1.0",
+    "rich>=13.7",
+]
+
+[project.optional-dependencies]
+voice = [
+    "sounddevice>=0.4.6",   # captura y reproducción
+    "numpy>=1.24",
+    "faster-whisper>=1.0",  # STT + modelo Silero VAD (ONNX, sin torch)
+    "onnxruntime>=1.17",    # runtime del VAD y del wake word
+    "openwakeword>=0.6",    # wake word "hey jarvis"
+    "edge-tts>=6.1",        # TTS neuronal gratuito
+    "av>=11.0",             # decodifica el MP3 del TTS a PCM, sin ffmpeg
+    "pynput>=1.7",          # push-to-talk global
+]
+elevenlabs = ["httpx>=0.27"]
+windows = ["pywin32>=306"]  # voz SAPI de respaldo, 100% offline
+web = ["fastapi>=0.111", "uvicorn[standard]>=0.30"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.5"]
+
+[project.scripts]
+jarvis = "jarvis.main:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jarvis"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
