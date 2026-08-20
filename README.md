@@ -44,7 +44,27 @@ debajo; sin él no hay cerebro. Instala [Node.js](https://nodejs.org/) y luego:
 npm install -g @anthropic-ai/claude-code
 ```
 
-### 2. El proyecto
+### 2. Permitir scripts en PowerShell
+
+Windows viene con la ejecución de scripts desactivada, así que activar el entorno virtual
+falla con *"No se puede cargar el archivo ... Activate.ps1 porque la ejecución de scripts
+está deshabilitada en este sistema"*. Le pasa a todo el mundo la primera vez. Ejecuta una
+sola vez:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+Permite ejecutar los scripts que creas en tu equipo, pero sigue exigiendo firma digital a
+los descargados de internet. `-Scope CurrentUser` significa que sólo afecta a tu usuario y
+**no hace falta ser administrador**.
+
+Si prefieres no cambiar la configuración, sáltate la activación llamando al Python del
+entorno por su ruta: `.venv\Scripts\python.exe -m pip install ...`, y lo mismo para
+ejecutarlo. No uses `activate.bat` desde PowerShell: no da error, pero la activación se
+pierde y acabarías instalando en el Python global sin darte cuenta.
+
+### 3. El proyecto
 
 ```powershell
 git clone https://github.com/softwarejeremy/Cositas-Skypie.git
@@ -59,7 +79,7 @@ pip install -e ".[voice,windows]"
 La primera vez se descargarán el modelo de transcripción (~500 MB para `small`) y el
 del wake word (~2 MB). Sólo ocurre una vez.
 
-### 3. Tu clave de Anthropic
+### 4. Tu clave de Anthropic
 
 ```powershell
 copy .env.example .env
@@ -72,7 +92,7 @@ que cargar saldo en *Billing* (desde 5 USD).
 
 `.env` está en `.gitignore`: tu clave nunca se sube a GitHub.
 
-### 4. Comprueba que todo está en su sitio
+### 5. Comprueba que todo está en su sitio
 
 ```powershell
 python -m jarvis --diag
@@ -82,7 +102,7 @@ Revisa cada eslabón por separado —Python, el CLI, las dependencias, los dispo
 audio, la voz, la transcripción y el micrófono— y te dice exactamente cuál falla.
 **Arregla cualquier ✗ antes de seguir.**
 
-### 5. En marcha
+### 6. En marcha
 
 ```powershell
 python -m jarvis
@@ -221,6 +241,10 @@ troceo en frases, el VAD y la memoria. Todo lo que toca hardware tiene un doble 
 ---
 
 ## Problemas frecuentes
+
+**"No se puede cargar el archivo Activate.ps1 ... la ejecución de scripts está
+deshabilitada"** → Es la política de PowerShell, no un fallo del proyecto. Mira el paso 2
+de la instalación: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`.
 
 **"No encuentro el CLI de Claude Code"** → `npm install -g @anthropic-ai/claude-code`
 
