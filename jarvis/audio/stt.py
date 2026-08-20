@@ -7,6 +7,18 @@ descarga) y a partir de ahí cada frase se transcribe en unas décimas.
 La transcripción es de por sí bloqueante y usa CPU a tope, así que va siempre
 en un hilo aparte: si corriera en el loop de asyncio congelaría la captura de
 audio justo mientras el usuario sigue hablando.
+
+## Sobre la elección de dispositivo
+
+Detectar que hay una GPU NVIDIA **no** significa que se pueda usar: faster-whisper
+necesita cuDNN 9 y cuBLAS instalados aparte, y no toda GPU hace `float16` de
+forma eficiente. Preguntar por la presencia de la tarjeta y dar por hecha la
+capacidad es exactamente lo que rompía la carga en Windows.
+
+Por eso aquí se verifica dos veces: primero se le pregunta a ctranslate2 qué
+precisiones soporta de verdad ese dispositivo, y después, si aun así la carga
+falla, se replega a CPU. Un asistente que transcribe despacio sirve; uno que no
+transcribe, no.
 """
 
 from __future__ import annotations
@@ -19,19 +31,68 @@ if TYPE_CHECKING:
 
     from ..config import Settings
 
+# Precisiones aceptables por dispositivo, de mejor a peor. En GPU manda la
+# velocidad; en CPU, int8 es el punto dulce entre rapidez y calidad.
+_PREFERENCIAS: dict[str, tuple[str, ...]] = {
+    "cuda": ("float16", "int8_float16", "float32"),
+    "cpu": ("int8", "int8_float32", "float32"),
+}
 
-def _resolver_dispositivo(device: str) -> tuple[str, str]:
-    """Elige dispositivo y precisión. ``auto`` usa GPU si la hay."""
-    if device == "auto":
-        try:
-            import ctranslate2
+_REPLIEGUE = ("cpu", "int8")
 
-            if ctranslate2.get_cuda_device_count() > 0:
-                return "cuda", "float16"
-        except Exception:  # noqa: BLE001 - sin CUDA, sin drama
-            pass
-        return "cpu", "int8"
-    return device, "float16" if device == "cuda" else "int8"
+
+def _precisiones_soportadas(device: str) -> set[str]:
+    """Qué precisiones admite realmente este dispositivo.
+
+    Devuelve un conjunto vacío si el dispositivo no es utilizable — es lo que
+    pasa con una GPU presente pero sin drivers o sin cuDNN, donde consultar
+    lanza excepción en vez de devolver una lista vacía.
+    """
+    try:
+        import ctranslate2
+
+        return set(ctranslate2.get_supported_compute_types(device))
+    except Exception:  # noqa: BLE001 - dispositivo inservible; ya nos vale saberlo
+        return set()
+
+
+def _mejor_precision(device: str) -> str | None:
+    """La mejor precisión soportada, o None si el dispositivo no sirve."""
+    soportadas = _precisiones_soportadas(device)
+    if not soportadas:
+        return None
+    for precision in _PREFERENCIAS.get(device, ()):
+        if precision in soportadas:
+            return precision
+    # Soporta algo que no habíamos previsto: mejor eso que nada.
+    return sorted(soportadas)[0]
+
+
+def hay_gpu() -> bool:
+    """¿Hay al menos una GPU NVIDIA visible? No implica que sea usable."""
+    try:
+        import ctranslate2
+
+        return ctranslate2.get_cuda_device_count() > 0
+    except Exception:  # noqa: BLE001 - sin CUDA, sin drama
+        return False
+
+
+def resolver_dispositivo(device_cfg: str, compute_cfg: str) -> tuple[str, str]:
+    """Decide dispositivo y precisión a partir de la configuración.
+
+    Una elección explícita del usuario se respeta tal cual: si pide algo que no
+    funciona, que lo diga la carga, no nosotros por adelantado.
+    """
+    if device_cfg == "auto":
+        device = "cuda" if (hay_gpu() and _mejor_precision("cuda")) else "cpu"
+    else:
+        device = device_cfg
+
+    if compute_cfg != "auto":
+        return device, compute_cfg
+
+    return device, _mejor_precision(device) or _REPLIEGUE[1]
 
 
 class Transcriber:
@@ -42,21 +103,45 @@ class Transcriber:
         self._modelo = None
         self.device = ""
         self.compute_type = ""
+        # Se rellena si hubo que replegarse; el diagnóstico lo muestra para
+        # explicar por qué va en CPU en lugar de soltar el error de la librería.
+        self.motivo_repliegue: str | None = None
+        self.gpu_detectada = False
 
     def cargar(self) -> None:
-        """Carga el modelo. Conviene llamarlo al arrancar, no en la primera
-        frase, para que el primer "Hey Jarvis" no tarde diez segundos."""
+        """Carga el modelo, replegándose a CPU si hace falta.
+
+        Conviene llamarlo al arrancar y no en la primera frase, para que el
+        primer "Hey Jarvis" no tarde diez segundos.
+        """
         if self._modelo is not None:
             return
 
         from faster_whisper import WhisperModel
 
-        device, compute = _resolver_dispositivo(self._s.device)
-        if self._s.compute_type != "auto":
-            compute = self._s.compute_type
+        self.gpu_detectada = hay_gpu()
+        objetivo = resolver_dispositivo(self._s.device, self._s.compute_type)
 
-        self.device, self.compute_type = device, compute
-        self._modelo = WhisperModel(self._s.model_size, device=device, compute_type=compute)
+        intentos = [objetivo]
+        if objetivo != _REPLIEGUE:
+            intentos.append(_REPLIEGUE)
+
+        for device, compute in intentos:
+            try:
+                self._modelo = WhisperModel(
+                    self._s.model_size, device=device, compute_type=compute
+                )
+            except Exception as exc:  # noqa: BLE001 - probamos el siguiente intento
+                if (device, compute) == intentos[-1]:
+                    raise
+                self.motivo_repliegue = (
+                    f"{device}/{compute} no funcionó ({_resumir(exc)}); "
+                    f"se usa {_REPLIEGUE[0]}/{_REPLIEGUE[1]}."
+                )
+                continue
+
+            self.device, self.compute_type = device, compute
+            return
 
     async def transcribir(self, audio: np.ndarray) -> str:
         """Transcribe audio float32 mono a 16 kHz. Devuelve texto limpio."""
@@ -80,6 +165,11 @@ class Transcriber:
         return " ".join(s.text.strip() for s in segmentos).strip()
 
 
+def _resumir(exc: Exception, limite: int = 120) -> str:
+    texto = " ".join(str(exc).split())
+    return texto if len(texto) <= limite else texto[:limite] + "…"
+
+
 class FakeTranscriber:
     """Devuelve textos predefinidos. Para tests y modo demostración."""
 
@@ -88,6 +178,8 @@ class FakeTranscriber:
         self._i = 0
         self.device = "fake"
         self.compute_type = "fake"
+        self.motivo_repliegue = None
+        self.gpu_detectada = False
 
     def cargar(self) -> None: ...
 

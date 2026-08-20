@@ -255,6 +255,20 @@ correcto en `audio.output_device`.
 el pico se queda por debajo de 0.01, el micrófono está silenciado o Windows está usando
 otro.
 
+**El diagnóstico dice "Saturación"** → Tu micrófono graba demasiado alto y la señal
+recorta, lo que empeora bastante la transcripción. Ajustes de sonido de Windows → tu
+micrófono → baja el **volumen de entrada** a ~70 y desactiva el **refuerzo de micrófono**.
+Repite `--diag` hasta que el pico quede entre 0.3 y 0.8.
+
+**"Requested float16 compute type, but the target device..."** → El modelo intentó usar la
+GPU y no pudo. Desde la versión actual esto se detecta solo y cae a CPU, avisándote. Si
+aun así aparece, fuerza CPU poniendo `device = "cpu"` en la sección `[stt]` de
+`config.toml`.
+
+**Tengo GPU NVIDIA pero va en CPU** → Falta cuDNN 9 para CUDA 12, que faster-whisper
+necesita y no se instala con pip. Funciona igual en CPU, sólo más despacio; instalándolo
+ganarías velocidad y podrías subir a `stt.model_size = "medium"`, más preciso en español.
+
 **Se interrumpe solo mientras habla** → Está oyendo su propia voz por los altavoces.
 Usa auriculares, o pon `audio.barge_in = false`.
 

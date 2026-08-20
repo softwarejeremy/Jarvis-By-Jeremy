@@ -10,6 +10,7 @@ funcione se sepa exactamente cuál falló en vez de tener que adivinar.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import platform
 import shutil
 import sys
@@ -80,21 +81,39 @@ def _comprobar_dependencias() -> None:
     for nombre, para_que in modulos:
         try:
             __import__(nombre)
+        except Exception as exc:  # noqa: BLE001 - un paquete roto no puede tumbar esto
+            # "No instalado" y "instalado pero no arranca" piden remedios
+            # distintos: reinstalar con pip no arregla una DLL del sistema que
+            # falta. Merece la pena distinguirlos.
+            if _esta_instalado(nombre):
+                detalle = f"→ instalado, pero no carga: {_una_linea(exc)}"
+            else:
+                # Los corchetes se escapan: rich los interpreta como marcado.
+                detalle = r'→ falta: [cyan]pip install -e ".\[voice]"[/cyan]'
+            console.print(f"  {FALLO} {nombre:<16} [dim]{para_que}[/dim]  {detalle}")
+        else:
             console.print(f"  {OK} {nombre:<16} [dim]{para_que}[/dim]")
-        except ImportError:
-            # Los corchetes hay que escaparlos: rich los trata como marcado.
-            console.print(
-                f"  {FALLO} {nombre:<16} [dim]{para_que}[/dim]  "
-                r'→ [cyan]pip install -e ".\[voice]"[/cyan]'
-            )
+
+
+def _esta_instalado(nombre: str) -> bool:
+    """¿El paquete está en disco, aunque importarlo falle?"""
+    try:
+        return importlib.util.find_spec(nombre) is not None
+    except Exception:  # noqa: BLE001 - paquete tan roto que ni se puede consultar
+        return True
+
+
+def _una_linea(exc: Exception, limite: int = 90) -> str:
+    texto = " ".join(str(exc).split()) or type(exc).__name__
+    return texto if len(texto) <= limite else texto[:limite] + "…"
 
 
 def _comprobar_audio() -> None:
     _seccion("Dispositivos de audio")
     try:
         import sounddevice as sd
-    except ImportError:
-        console.print(f"  {FALLO} sounddevice no está instalado.")
+    except Exception as exc:  # noqa: BLE001 - falta el paquete o falta PortAudio
+        console.print(f"  {FALLO} No se puede usar sounddevice: {exc}")
         return
 
     try:
@@ -133,13 +152,15 @@ def _comprobar_audio() -> None:
     )
 
 
-def _probar_microfono(segundos: float = 3.0) -> None:
+def _probar_microfono(transcriber=None, segundos: float = 3.0) -> None:  # noqa: ANN001
+    """Graba, mide el nivel, comprueba el VAD y transcribe lo grabado."""
     _seccion(f"Prueba de micrófono ({segundos:.0f} s)")
+    console.print("  [dim]Diga algo como: «Hola Jarvis, ¿qué tal estás?»[/dim]")
     try:
         import numpy as np
         import sounddevice as sd
-    except ImportError:
-        console.print(f"  {FALLO} Faltan sounddevice o numpy.")
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"  {FALLO} No se puede usar el micrófono: {exc}")
         return
 
     console.print("  [bold]Hable ahora…[/bold]")
@@ -162,7 +183,11 @@ def _probar_microfono(segundos: float = 3.0) -> None:
     if pico < 0.01:
         console.print(f"  {FALLO} No se ha oído nada. ¿Micrófono silenciado o mal elegido?")
     elif pico > 0.99:
-        console.print(f"  {AVISO} Saturación: baje el volumen de entrada.")
+        console.print(
+            f"  {AVISO} Saturación: la señal recorta y eso degrada la transcripción.\n"
+            "      Ajustes de sonido de Windows → su micrófono → baje el volumen\n"
+            "      de entrada a ~70 y desactive el refuerzo de micrófono."
+        )
     else:
         console.print(f"  {OK} El micrófono capta correctamente.")
 
@@ -184,6 +209,30 @@ def _probar_microfono(segundos: float = 3.0) -> None:
             )
     except Exception as exc:  # noqa: BLE001
         console.print(f"  {FALLO} Fallo en el detector de voz: {exc}")
+
+    # Transcribir lo que se acaba de grabar. Es la prueba de fuego: mide la
+    # latencia real sobre voz real y enseña si de verdad le entiende.
+    if transcriber is None or pico < 0.01:
+        return
+    try:
+        t0 = time.perf_counter()
+        texto = transcriber._transcribir_sync(señal)
+        ms = (time.perf_counter() - t0) * 1000
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"  {FALLO} Fallo al transcribir: {exc}")
+        return
+
+    if texto:
+        console.print(f'  {OK} Le he entendido: [bold]«{texto}»[/bold]  [dim]({ms:.0f} ms)[/dim]')
+        if ms > 2000:
+            console.print(
+                f'  {AVISO} La transcripción tarda lo suyo. Pruebe '
+                '[cyan]stt.model_size = "tiny"[/cyan] si nota la conversación lenta.'
+            )
+    else:
+        console.print(
+            f"  {AVISO} No se ha transcrito nada. Si habló, revise el nivel de entrada."
+        )
 
 
 def _probar_voz() -> None:
@@ -226,8 +275,9 @@ def _probar_voz() -> None:
         console.print(f"  {FALLO} {exc}")
 
 
-def _probar_transcripcion() -> None:
-    _seccion("Carga del modelo de transcripción")
+def _probar_transcripcion():  # noqa: ANN201 - devuelve el Transcriber ya cargado
+    """Carga el modelo y explica en qué dispositivo acabó y por qué."""
+    _seccion("Modelo de transcripción")
     s = load_settings()
     try:
         from .audio.stt import Transcriber
@@ -236,29 +286,64 @@ def _probar_transcripcion() -> None:
         t0 = time.perf_counter()
         t.cargar()
         seg = time.perf_counter() - t0
-        console.print(
-            f"  {OK} Whisper [cyan]{s.stt.model_size}[/cyan] cargado en {seg:.1f} s "
-            f"({t.device}, {t.compute_type})"
-        )
-        if t.device == "cpu" and s.stt.model_size in ("medium", "large-v3"):
-            console.print(
-                f"  {AVISO} Ese modelo en CPU va lento. Considere "
-                "[cyan]stt.model_size = \"small\"[/cyan]."
-            )
     except Exception as exc:  # noqa: BLE001
-        console.print(f"  {FALLO} {exc}")
+        console.print(f"  {FALLO} No se pudo cargar el modelo: {exc}")
+        console.print(
+            "      Pruebe a forzar CPU poniendo "
+            '[cyan]device = "cpu"[/cyan] en la sección [cyan]\\[stt][/cyan] '
+            "de config.toml."
+        )
+        return None
+
+    console.print(
+        f"  {OK} Whisper [cyan]{s.stt.model_size}[/cyan] cargado en {seg:.1f} s "
+        f"([cyan]{t.device}[/cyan], {t.compute_type})"
+    )
+
+    # Si hubo repliegue, explicarlo: es mucho más útil que el error de la
+    # librería, que no dice qué hacer al respecto.
+    if t.motivo_repliegue:
+        console.print(f"  {AVISO} {t.motivo_repliegue}")
+
+    if t.gpu_detectada and t.device == "cpu":
+        console.print(
+            f"  {AVISO} Tiene una GPU NVIDIA que no se está aprovechando. "
+            "Suele faltar cuDNN 9 para CUDA 12;\n"
+            "      instalándolo iría bastante más rápido y podría usar un modelo mayor."
+        )
+    elif not t.gpu_detectada and s.stt.model_size in ("medium", "large-v3"):
+        console.print(
+            f"  {AVISO} Ese modelo en CPU va lento. Considere "
+            '[cyan]stt.model_size = "small"[/cyan].'
+        )
+
+    return t
+
+
+def _seguro(funcion, *args):  # noqa: ANN001, ANN202
+    """Ejecuta una sección sin que un fallo suyo tumbe el diagnóstico.
+
+    Esta es la herramienta a la que se acude cuando algo va mal: si se muere
+    a la primera excepción, deja de servir justo cuando más falta hace. Una
+    sección rota se reporta y se sigue con las demás.
+    """
+    try:
+        return funcion(*args)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"  {FALLO} Esta comprobación ha fallado: {exc}")
+        return None
 
 
 def ejecutar_diagnostico() -> int:
     console.print("\n[bold cyan]J.A.R.V.I.S. — diagnóstico del sistema[/bold cyan]")
 
-    _comprobar_entorno()
-    _comprobar_credenciales()
-    _comprobar_dependencias()
-    _comprobar_audio()
-    _probar_voz()
-    _probar_transcripcion()
-    _probar_microfono()
+    _seguro(_comprobar_entorno)
+    _seguro(_comprobar_credenciales)
+    _seguro(_comprobar_dependencias)
+    _seguro(_comprobar_audio)
+    _seguro(_probar_voz)
+    transcriber = _seguro(_probar_transcripcion)
+    _seguro(_probar_microfono, transcriber)
 
     console.print(
         "\n[bold green]Diagnóstico terminado.[/bold green] "
