@@ -1,0 +1,505 @@
+/* ═══════════════════════════════════════════════════════════════
+   HUD de J.A.R.V.I.S.
+   Sin dependencias externas: ni tipografías de Google, ni frameworks.
+   Debe abrir al instante en una red local y verse bien en el móvil.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --fondo:        #050a12;
+  --fondo-panel:  rgba(12, 22, 38, 0.72);
+  --borde:        rgba(56, 189, 248, 0.16);
+  --borde-fuerte: rgba(56, 189, 248, 0.38);
+
+  --texto:        #dbeafe;
+  --texto-tenue:  #64809f;
+
+  --cian:    #38bdf8;
+  --ambar:   #fbbf24;
+  --verde:   #34d399;
+  --magenta: #e879f9;
+  --rojo:    #fb7185;
+
+  /* Color activo del reactor. Lo cambia el estado. */
+  --acento: var(--cian);
+
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  background: var(--fondo);
+  color: var(--texto);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Rejilla de fondo: da profundidad sin distraer. */
+.rejilla {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(56, 189, 248, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 45%, #000 30%, transparent 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Cabecera ──────────────────────────────────────────────── */
+.cabecera {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--borde);
+  background: rgba(5, 10, 18, 0.85);
+  backdrop-filter: blur(8px);
+}
+
+.marca { display: flex; align-items: baseline; gap: 12px; }
+
+.marca-nombre {
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  color: var(--cian);
+  text-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
+}
+
+.marca-sub { font-size: 0.76rem; color: var(--texto-tenue); }
+
+.indicadores { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+
+.indicador {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
+.indicador .etiqueta {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--texto-tenue);
+}
+
+.conexion { flex-direction: row; align-items: center; gap: 7px; }
+
+.conexion .punto {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--rojo);
+  box-shadow: 0 0 9px currentColor;
+  color: var(--rojo);
+}
+
+.conexion[data-estado="conectado"] .punto {
+  background: var(--verde);
+  color: var(--verde);
+  animation: latido 2.4s ease-in-out infinite;
+}
+
+@keyframes latido { 50% { opacity: 0.35; } }
+
+/* ── Tablero ───────────────────────────────────────────────── */
+.tablero {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(0, 1.5fr) minmax(240px, 0.9fr);
+  gap: 16px;
+  padding: 16px 22px 22px;
+}
+
+.panel {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--borde);
+  border-radius: 14px;
+  background: var(--fondo-panel);
+  backdrop-filter: blur(6px);
+  padding: 18px;
+}
+
+.titulo-panel {
+  margin: 0 0 12px;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--texto-tenue);
+}
+
+/* ── Reactor ───────────────────────────────────────────────── */
+.panel-reactor { align-items: center; justify-content: center; gap: 6px; }
+
+.reactor {
+  position: relative;
+  width: min(260px, 46vw);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  /* Tiene proporción fija: si la rejilla lo comprime para que quepa, se sale
+     del panel y se monta sobre lo que tenga encima. */
+  flex-shrink: 0;
+}
+
+.reactor-svg { width: 100%; height: 100%; overflow: visible; }
+
+.reactor-svg circle { fill: none; stroke: var(--acento); transition: stroke 0.5s ease; }
+
+.anillo-exterior { stroke-width: 1; opacity: 0.22; }
+
+.anillo-giro {
+  stroke-width: 2;
+  stroke-dasharray: 54 26;
+  opacity: 0.5;
+  transform-origin: 100px 100px;
+  animation: girar 14s linear infinite;
+}
+
+.anillo-giro-inv {
+  stroke-width: 1.5;
+  stroke-dasharray: 12 20;
+  opacity: 0.4;
+  transform-origin: 100px 100px;
+  animation: girar 9s linear infinite reverse;
+}
+
+.segmentos circle {
+  stroke-width: 8;
+  stroke-dasharray: 20 12;
+  opacity: 0.3;
+  transform-origin: 100px 100px;
+  animation: girar 30s linear infinite;
+}
+
+/* `.reactor-svg circle` (clase + elemento) gana por especificidad a `.nucleo`
+   (sólo clase), así que sin este prefijo el `fill: none` genérico dejaba el
+   núcleo hueco y el reactor perdía justo su centro luminoso. */
+.reactor-svg .nucleo-halo {
+  fill: var(--acento);
+  stroke: none;
+  opacity: 0.14;
+  transform-origin: 100px 100px;
+  animation: respirar 3.4s ease-in-out infinite;
+}
+
+.reactor-svg .nucleo {
+  fill: var(--acento);
+  stroke: none;
+  filter: drop-shadow(0 0 22px var(--acento));
+  transform-origin: 100px 100px;
+  animation: respirar 3.4s ease-in-out infinite;
+}
+
+@keyframes girar   { to { transform: rotate(360deg); } }
+@keyframes respirar { 0%, 100% { transform: scale(1); opacity: 0.92; }
+                      50%      { transform: scale(1.07); opacity: 1; } }
+
+/* Ondas: sólo se ven al hablar. */
+/* Las barras se recortan sobre el núcleo, así que tienen que caber DENTRO
+   de él: cinco barras de 3 px con 3 px de hueco ocupan 27 px, holgadas en un
+   núcleo de 52 px de diámetro. Con diez barras se salían y el reactor
+   parecía un código de barras. */
+.ondas {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 34px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.ondas span {
+  width: 3px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--fondo);
+}
+
+.panel-reactor[data-estado="hablando"] .ondas { opacity: 1; }
+
+.panel-reactor[data-estado="hablando"] .ondas span {
+  animation: onda 0.9s ease-in-out infinite;
+}
+
+.ondas span:nth-child(1) { animation-delay: 0.00s; }
+.ondas span:nth-child(2) { animation-delay: 0.13s; }
+.ondas span:nth-child(3) { animation-delay: 0.26s; }
+.ondas span:nth-child(4) { animation-delay: 0.13s; }
+.ondas span:nth-child(5) { animation-delay: 0.00s; }
+
+@keyframes onda { 0%, 100% { height: 6px; } 50% { height: 26px; } }
+
+/* Un color y un ritmo por estado: se lee de un vistazo desde lejos.
+   El atributo va en el PANEL, no en el reactor, porque `--acento` tiene que
+   alcanzar también a la etiqueta de estado, que es su hermana y no su hija. */
+.panel-reactor[data-estado="dormido"]        { --acento: #2a5a7a; }
+.panel-reactor[data-estado="escuchando"]     { --acento: var(--cian); }
+.panel-reactor[data-estado="transcribiendo"] { --acento: #22d3ee; }
+.panel-reactor[data-estado="pensando"]       { --acento: var(--ambar); }
+.panel-reactor[data-estado="hablando"]       { --acento: var(--verde); }
+.panel-reactor[data-estado="confirmando"]    { --acento: var(--magenta); }
+.panel-reactor[data-estado="error"]          { --acento: var(--rojo); }
+
+.panel-reactor[data-estado="escuchando"] .nucleo,
+.panel-reactor[data-estado="escuchando"] .nucleo-halo { animation-duration: 1.1s; }
+.panel-reactor[data-estado="pensando"] .anillo-giro   { animation-duration: 2.2s; }
+.panel-reactor[data-estado="pensando"] .nucleo        { animation-duration: 1.4s; }
+.panel-reactor[data-estado="confirmando"] .nucleo     { animation-duration: 0.7s; }
+
+.estado-texto {
+  margin: 14px 0 2px;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--acento);
+}
+
+.estado-pista {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--texto-tenue);
+  text-align: center;
+  min-height: 1.2em;
+}
+
+/* ── Botones ───────────────────────────────────────────────── */
+.controles { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; justify-content: center; }
+
+.boton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--borde-fuerte);
+  background: rgba(56, 189, 248, 0.09);
+  color: var(--texto);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+
+.boton svg {
+  width: 16px; height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.boton-enviar svg { fill: currentColor; stroke: none; }
+
+.boton:hover:not(:disabled) { background: rgba(56, 189, 248, 0.2); border-color: var(--cian); }
+.boton:active:not(:disabled) { transform: scale(0.97); }
+.boton:disabled { opacity: 0.32; cursor: not-allowed; }
+
+.boton-principal { border-color: var(--cian); color: var(--cian); }
+.boton-secundario { border-color: rgba(251, 113, 133, 0.4); color: var(--rojo); background: rgba(251, 113, 133, 0.07); }
+.boton-secundario:hover:not(:disabled) { background: rgba(251, 113, 133, 0.18); border-color: var(--rojo); }
+
+/* ── Conversación ──────────────────────────────────────────── */
+.conversacion {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-right: 6px;
+  scroll-behavior: smooth;
+}
+
+.turno { display: flex; flex-direction: column; gap: 4px; max-width: 88%; }
+.turno-usuario { align-self: flex-end; align-items: flex-end; }
+.turno-jarvis  { align-self: flex-start; }
+
+.turno .quien {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--texto-tenue);
+}
+
+.turno .dicho {
+  padding: 10px 14px;
+  border-radius: 14px;
+  line-height: 1.55;
+  font-size: 0.92rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.turno-usuario .dicho { background: rgba(56, 189, 248, 0.13); border: 1px solid var(--borde); }
+.turno-jarvis  .dicho { background: rgba(148, 163, 184, 0.07); border: 1px solid rgba(148, 163, 184, 0.14); }
+
+.turno-jarvis.escribiendo .dicho::after {
+  content: "▍";
+  color: var(--cian);
+  animation: parpadeo 1s step-end infinite;
+}
+
+@keyframes parpadeo { 50% { opacity: 0; } }
+
+.vacio { color: var(--texto-tenue); font-size: 0.84rem; font-style: italic; margin: 0; }
+
+/* ── Entrada de texto ──────────────────────────────────────── */
+.entrada { display: flex; gap: 8px; margin-top: 14px; }
+
+.entrada input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 15px;
+  border-radius: 999px;
+  border: 1px solid var(--borde);
+  background: rgba(5, 10, 18, 0.7);
+  color: var(--texto);
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+
+.entrada input:focus { border-color: var(--cian); }
+.entrada input::placeholder { color: var(--texto-tenue); }
+.boton-enviar { padding: 10px 14px; }
+
+/* ── Actividad ─────────────────────────────────────────────── */
+.actividad {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+}
+
+.actividad li {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.09);
+  color: var(--texto-tenue);
+  line-height: 1.45;
+}
+
+.actividad .hora { color: rgba(100, 128, 159, 0.65); flex-shrink: 0; }
+.actividad .que { color: var(--texto); word-break: break-word; }
+.actividad .herramienta .que { color: var(--magenta); }
+.actividad .permiso-log .que { color: var(--ambar); }
+.actividad .error .que { color: var(--rojo); }
+.actividad .ok .que { color: var(--verde); }
+
+/* ── Aviso de permiso ──────────────────────────────────────── */
+/* `display: flex` le gana al atributo `hidden`, así que sin esta regla el
+   aviso sigue ocupando la parte baja de la pantalla aunque no se vea, y se
+   come los clics del campo de texto y del botón de enviar. */
+.permiso[hidden] { display: none; }
+
+.permiso {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  padding: 0 20px 24px;
+  animation: subir 0.3s ease;
+  /* Es un aviso, no un diálogo: no debe capturar clics fuera de su caja. */
+  pointer-events: none;
+}
+
+@keyframes subir { from { transform: translateY(24px); opacity: 0; } }
+
+.permiso-caja {
+  pointer-events: auto;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  max-width: 620px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: rgba(41, 31, 8, 0.95);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+
+.permiso-icono { font-size: 1.3rem; color: var(--ambar); line-height: 1.2; }
+.permiso-titulo { margin: 0 0 4px; font-size: 0.72rem; text-transform: uppercase;
+                  letter-spacing: 0.16em; color: var(--ambar); font-family: var(--mono); }
+.permiso-texto { margin: 0; font-size: 0.92rem; line-height: 1.5; }
+.permiso-nota  { margin: 6px 0 0; font-size: 0.78rem; color: var(--texto-tenue); }
+
+/* ── Barras de desplazamiento ──────────────────────────────── */
+.conversacion::-webkit-scrollbar,
+.actividad::-webkit-scrollbar { width: 5px; }
+.conversacion::-webkit-scrollbar-thumb,
+.actividad::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.22); border-radius: 3px; }
+
+/* ── Pantallas pequeñas ────────────────────────────────────── */
+@media (max-width: 1080px) {
+  .tablero { grid-template-columns: 1fr 1.3fr; }
+  .panel-actividad { grid-column: 1 / -1; max-height: 190px; }
+}
+
+@media (max-width: 720px) {
+  body { overflow: auto; }
+  .cabecera { padding: 12px 16px; }
+  .indicadores { gap: 12px; font-size: 0.72rem; }
+
+  /* Sin `flex: none`, la rejilla intenta caber en la altura de la pantalla y
+     aplasta las filas: el reactor se desborda y los botones desaparecen. En
+     móvil lo correcto es que cada panel ocupe lo que necesite y la página se
+     desplace. */
+  .tablero {
+    grid-template-columns: 1fr;
+    padding: 12px 14px 18px;
+    flex: none;
+    min-height: auto;
+  }
+  .panel-reactor { padding-block: 24px; }
+  .panel { padding: 15px; }
+  .panel-conversacion { min-height: 55vh; }
+  .panel-actividad { max-height: 165px; }
+  .reactor { width: min(190px, 52vw); }
+}
+
+/* Respeta a quien prefiere que nada se mueva. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050a12">
+<title>J.A.R.V.I.S.</title>
+<link rel="stylesheet" href="/estaticos/estilo.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='%2338bdf8' stroke-width='8'/><circle cx='50' cy='50' r='16' fill='%2338bdf8'/></svg>">
+</head>
+<body>
+
+<div class="rejilla" aria-hidden="true"></div>
+
+<header class="cabecera">
+  <div class="marca">
+    <span class="marca-nombre">J.A.R.V.I.S.</span>
+    <span class="marca-sub" id="subtitulo">conectando…</span>
+  </div>
+  <div class="indicadores">
+    <div class="indicador"><span class="etiqueta">modelo</span><span id="modelo">—</span></div>
+    <div class="indicador"><span class="etiqueta">voz</span><span id="voz">—</span></div>
+    <div class="indicador"><span class="etiqueta">sesión</span><span id="coste">$0.0000</span></div>
+    <div class="indicador conexion" id="conexion" data-estado="desconectado">
+      <span class="punto"></span><span id="conexion-texto">sin conexión</span>
+    </div>
+  </div>
+</header>
+
+<main class="tablero">
+
+  <!-- ── Reactor ───────────────────────────────────────────── -->
+  <section class="panel panel-reactor" data-estado="dormido">
+    <div class="reactor" id="reactor" data-estado="dormido">
+      <svg viewBox="0 0 200 200" class="reactor-svg" aria-hidden="true">
+        <circle class="anillo-exterior" cx="100" cy="100" r="88"/>
+        <circle class="anillo-giro"     cx="100" cy="100" r="76"/>
+        <circle class="anillo-giro-inv" cx="100" cy="100" r="64"/>
+        <g class="segmentos">
+          <circle cx="100" cy="100" r="50"/>
+        </g>
+        <circle class="nucleo-halo" cx="100" cy="100" r="38"/>
+        <circle class="nucleo"      cx="100" cy="100" r="26"/>
+      </svg>
+      <div class="ondas" id="ondas" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <p class="estado-texto" id="estado-texto">dormido</p>
+    <p class="estado-pista" id="estado-pista">Di «Hey Jarvis» o pulsa el botón</p>
+
+    <div class="controles">
+      <button id="btn-escuchar" class="boton boton-principal">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>
+        Escuchar
+      </button>
+      <button id="btn-interrumpir" class="boton boton-secundario" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        Silenciar
+      </button>
+    </div>
+  </section>
+
+  <!-- ── Conversación ──────────────────────────────────────── -->
+  <section class="panel panel-conversacion">
+    <h2 class="titulo-panel">Conversación</h2>
+    <div class="conversacion" id="conversacion">
+      <p class="vacio">Todavía no habéis hablado.</p>
+    </div>
+    <form class="entrada" id="formulario">
+      <input id="campo" type="text" autocomplete="off" spellcheck="false"
+             placeholder="Escribe aquí si prefieres no hablar…">
+      <button type="submit" class="boton boton-enviar" aria-label="Enviar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12 4 5l3 7-3 7z"/></svg>
+      </button>
+    </form>
+  </section>
+
+  <!-- ── Actividad ─────────────────────────────────────────── -->
+  <section class="panel panel-actividad">
+    <h2 class="titulo-panel">Actividad</h2>
+    <ul class="actividad" id="actividad">
+      <li class="vacio">Sin actividad todavía.</li>
+    </ul>
+  </section>
+
+</main>
+
+<!-- ── Permiso ─────────────────────────────────────────────── -->
+<div class="permiso" id="permiso" hidden>
+  <div class="permiso-caja">
+    <span class="permiso-icono" aria-hidden="true">⚠</span>
+    <div>
+      <p class="permiso-titulo">Pide autorización</p>
+      <p class="permiso-texto" id="permiso-texto"></p>
+      <p class="permiso-nota">Respóndele en voz alta: «sí» o «no».</p>
+    </div>
+  </div>
+</div>
+
+<script src="/estaticos/hud.js"></script>
+</body>
+</html>

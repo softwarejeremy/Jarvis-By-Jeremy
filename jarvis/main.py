@@ -6,6 +6,7 @@ Modos disponibles::
     python -m jarvis --texto         # escribes tú, él responde con voz
     python -m jarvis --demo          # sin API key, respuestas simuladas
     python -m jarvis --sim audio.wav # inyecta un WAV en vez del micrófono
+    python -m jarvis --web           # además, HUD en el navegador
     python -m jarvis --diag          # diagnóstico del equipo
 
 El montaje de las piezas vive aquí a propósito: el núcleo recibe todo por
@@ -36,6 +37,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--demo", action="store_true", help="sin API key: respuestas simuladas")
     p.add_argument("--sim", metavar="WAV", help="usar un archivo WAV en vez del micrófono")
     p.add_argument("--muda", action="store_true", help="no reproducir audio (sólo texto)")
+    p.add_argument("--web", action="store_true", help="abrir el HUD en el navegador")
+    p.add_argument("--puerto", type=int, default=8765, help="puerto del HUD (por defecto 8765)")
     p.add_argument("--diag", action="store_true", help="diagnosticar el equipo y salir")
     p.add_argument("--config", metavar="TOML", help="ruta a un config.toml alternativo")
     p.add_argument("-v", "--verbose", action="store_true", help="salida detallada")
@@ -172,9 +175,20 @@ async def _main_async(args: argparse.Namespace) -> int:
     tareas = [asyncio.create_task(core.run())]
     escuchador = None
 
-    if args.texto:
+    if args.web:
+        from .server.app import servir
+
+        tareas.append(asyncio.create_task(servir(core, puerto=args.puerto)))
+        hud.console.print(
+            f"  [bold cyan]HUD:[/bold cyan] http://localhost:{args.puerto}"
+            f"  [dim](también desde el móvil, con la IP de este equipo)[/dim]\n"
+        )
+
+    # Con el HUD abierto, la entrada de texto va por el navegador: dos bucles
+    # leyendo a la vez se pisarían.
+    if args.texto and not args.web:
         tareas.append(asyncio.create_task(_bucle_texto(core, hud)))
-    elif s.hotkey.enabled:
+    elif s.hotkey.enabled and not args.texto:
         from .hotkey import HotkeyListener
 
         def pulsado() -> None:

@@ -73,7 +73,7 @@ cd Cositas-Skypie
 python -m venv .venv
 .venv\Scripts\activate
 
-pip install -e ".[voice,windows]"
+pip install -e ".[voice,windows,web]"
 ```
 
 La primera vez se descargarán el modelo de transcripción (~500 MB para `small`) y el
@@ -120,11 +120,35 @@ python -m jarvis --texto          # escribes tú, él contesta con voz
 python -m jarvis --demo           # sin clave ni gasto: respuestas simuladas
 python -m jarvis --muda           # sin audio de salida, sólo texto
 python -m jarvis --sim audio.wav  # inyecta un WAV en vez del micrófono
+python -m jarvis --web            # además, el HUD en el navegador
 python -m jarvis --diag           # diagnóstico
 ```
 
 **Empieza por `--demo --texto`.** Funciona sin clave y sin gastar nada, y te deja ver
 el flujo completo antes de configurar la API.
+
+---
+
+## El HUD en el navegador
+
+```powershell
+python -m jarvis --web
+```
+
+Abre `http://localhost:8765`. Verás el reactor cambiando de color según lo que
+esté haciendo, la conversación apareciendo palabra a palabra, las herramientas que
+usa y el gasto acumulado.
+
+Es el **mismo núcleo**: lo que digas por voz sale en la pantalla, y lo que escribas
+en la pantalla lo contesta por voz. No son dos programas.
+
+**Desde el móvil**, con el PC encendido y en la misma red: mira tu IP local con
+`ipconfig` y entra en `http://192.168.1.XX:8765`. La primera vez Windows puede
+preguntar si permites la conexión — hay que decir que sí para la red privada.
+
+Si no hay micrófono en el equipo, el botón de escuchar aparece desactivado y sólo
+funciona la entrada por texto. Y con `--web --texto` el teclado del navegador es la
+única entrada, sin tocar el micrófono.
 
 ---
 
@@ -206,6 +230,7 @@ jarvis/
 │   └── tts/          edge · sapi · elevenlabs
 ├── hotkey.py         Push-to-talk global
 ├── tools/            Herramientas propias, expuestas a Claude vía MCP
+├── server/           HUD web: FastAPI + WebSocket sobre el mismo núcleo
 └── ui/console.py     HUD de terminal
 ```
 
@@ -230,12 +255,13 @@ que tocar.
 
 ```bash
 pip install -e ".[voice,dev]"
-pytest              # 105 tests, sin necesidad de micrófono
+pytest              # 147 tests, sin necesidad de micrófono
 ruff check jarvis
 ```
 
 Los tests cubren la máquina de estados completa, las tres barreras de permisos, el
-troceo en frases, el VAD y la memoria. Todo lo que toca hardware tiene un doble en
+troceo en frases, el VAD, la memoria, la selección de dispositivo de transcripción
+y el servidor web. Todo lo que toca hardware tiene un doble en
 `tests/conftest.py`.
 
 ---
@@ -289,10 +315,10 @@ Implementado y probado:
 - [x] Permisos con confirmación por voz
 - [x] Memoria de largo plazo
 - [x] Diagnóstico y modos demo/simulación
+- [x] HUD web, accesible desde el móvil
 
 Pendiente:
 
-- [ ] Interfaz web (HUD en el navegador, accesible desde el móvil)
 - [ ] Herramientas de sistema (volumen, abrir aplicaciones, música)
 - [ ] Arranque automático con Windows
 

@@ -34,6 +34,10 @@ class MicStream:
     los últimos 300 ms podemos recuperarla.
     """
 
+    #: Hay hardware detrás. La interfaz web lo consulta para saber si tiene
+    #: sentido ofrecer el botón de escuchar.
+    es_real = True
+
     def __init__(
         self,
         samplerate: int = SAMPLE_RATE,
@@ -136,6 +140,8 @@ class FakeMicStream:
     Es lo que permite probar toda la cadena —VAD, transcripción, respuesta—
     en un servidor sin tarjeta de sonido, y en la CI.
     """
+
+    es_real = False
 
     def __init__(self, audio: np.ndarray, samplerate: int = SAMPLE_RATE) -> None:
         import numpy as np
