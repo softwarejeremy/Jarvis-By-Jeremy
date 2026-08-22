@@ -19,6 +19,9 @@ dependencies = [
     "pydantic-settings>=2.3",
     "python-dotenv>=1.0",
     "rich>=13.7",
+    # config.py lee TOML. `tomllib` es estándar desde 3.11; en 3.10 hace falta
+    # este respaldo, sin el cual el paquete ni siquiera importa.
+    'tomli>=2.0; python_version < "3.11"',
 ]
 
 [project.optional-dependencies]

@@ -1,5 +1,7 @@
 # J.A.R.V.I.S.
 
+[![CI](https://github.com/softwarejeremy/Cositas-Skypie/actions/workflows/ci.yml/badge.svg)](https://github.com/softwarejeremy/Cositas-Skypie/actions/workflows/ci.yml)
+
 Un asistente personal por voz construido sobre el **Claude Agent SDK**. No es un
 chatbot con micrófono: es el mismo motor agéntico que usa Claude Code —con acceso a
 tus archivos, a la terminal y a la web— envuelto en una capa de voz, personalidad y
@@ -263,10 +265,12 @@ que tocar.
 ## Desarrollo
 
 ```bash
-pip install -e ".[voice,dev]"
+pip install -e ".[voice,dev,web]"
 pytest              # 151 tests, sin necesidad de micrófono
-ruff check jarvis
+ruff check jarvis tests
 ```
+
+En cada push, GitHub Actions corre lo mismo sobre Python 3.10, 3.11 y 3.12.
 
 Los tests cubren la máquina de estados completa, las tres barreras de permisos, el
 troceo en frases, el VAD, la memoria, la selección de dispositivo de transcripción
