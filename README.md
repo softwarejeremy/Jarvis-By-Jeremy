@@ -263,6 +263,30 @@ romper nada.
 
 ---
 
+## Arrancar solo con Windows
+
+```powershell
+python -m jarvis --arrancar-con-windows --web --https
+```
+
+Deja un pequeño script en tu carpeta de Inicio (`shell:startup`) que lanza
+J.A.R.V.I.S. al iniciar sesión, **sin ventana de consola** — usa `pythonw.exe`,
+que no la abre, y lo lanza en modo oculto. Las banderas que pongas después de
+`--arrancar-con-windows` son las que arrancarán cada mañana: si aquí pones
+`--web --https`, eso es lo que se inicia solo.
+
+No toca el registro ni el Programador de tareas — es sólo un archivo en tu
+carpeta de usuario, sin permisos de administrador, y se desactiva borrándolo a
+mano o con:
+
+```powershell
+python -m jarvis --quitar-del-inicio
+```
+
+Bórralo desde `shell:startup` si prefieres hacerlo sin la terminal.
+
+---
+
 ## Cómo está construido
 
 ```
@@ -310,7 +334,7 @@ que tocar.
 
 ```bash
 pip install -e ".[voice,dev,web]"
-pytest              # 195 tests, sin necesidad de micrófono
+pytest              # 210 tests, sin necesidad de micrófono
 ruff check jarvis tests
 ```
 
@@ -381,10 +405,10 @@ Implementado y probado:
 - [x] HUD web, accesible desde el móvil, con micrófono del navegador
 - [x] Herramientas de sistema: volumen, abrir programas, bloquear
 - [x] Integración continua
+- [x] Arranque automático con Windows
 
 Pendiente:
 
-- [ ] Arranque automático con Windows
 
 > **Nota sobre las pruebas.** El código de audio se ha desarrollado y verificado con
 > tests y en modo simulación sobre Linux, sin hardware de sonido. Los tests cubren toda

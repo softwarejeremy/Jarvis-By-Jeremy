@@ -45,6 +45,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="servir el HUD con TLS: hace falta para usar el micrófono desde el móvil",
     )
     p.add_argument("--diag", action="store_true", help="diagnosticar el equipo y salir")
+    p.add_argument(
+        "--arrancar-con-windows",
+        action="store_true",
+        help="que J.A.R.V.I.S. se inicie solo al encender el equipo",
+    )
+    p.add_argument(
+        "--quitar-del-inicio",
+        action="store_true",
+        help="deshacer el arranque automático",
+    )
     p.add_argument("--config", metavar="TOML", help="ruta a un config.toml alternativo")
     p.add_argument("-v", "--verbose", action="store_true", help="salida detallada")
     return p.parse_args(argv)
@@ -263,6 +273,23 @@ def run(argv: list[str] | None = None) -> int:
         from .diag import ejecutar_diagnostico
 
         return ejecutar_diagnostico()
+
+    if args.arrancar_con_windows or args.quitar_del_inicio:
+        from rich.console import Console
+
+        from . import inicio
+
+        # Se conservan las banderas del arranque para que J.A.R.V.I.S. se
+        # inicie tal como lo pidió el usuario: si instala con `--web --https`,
+        # eso es lo que debe levantarse cada mañana.
+        extras = [a for a in (argv if argv is not None else sys.argv[1:])
+                  if a not in ("--arrancar-con-windows", "--quitar-del-inicio")]
+        orden = ["-m", "jarvis", *extras] if extras else inicio.ARGUMENTOS_POR_DEFECTO
+
+        Console().print(
+            inicio.desinstalar() if args.quitar_del_inicio else inicio.instalar(orden)
+        )
+        return 0
 
     try:
         return asyncio.run(_main_async(args))
