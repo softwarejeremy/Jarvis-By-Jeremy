@@ -17,8 +17,13 @@ from claude_agent_sdk import create_sdk_mcp_server, tool
 from ..core.memory import CATEGORIAS, Memory
 
 
-def construir_servidor_memoria(memoria: Memory) -> Any:
-    """Crea el servidor MCP con las herramientas de memoria."""
+def construir_servidor_jarvis(memoria: Memory) -> Any:
+    """El servidor MCP con TODAS las herramientas propias de J.A.R.V.I.S.
+
+    Memoria y sistema van juntas en un único servidor porque dos con el mismo
+    nombre se pisarían, y usar dos nombres distintos obligaría a mantener dos
+    listas de permisos para nada.
+    """
 
     lista_categorias = ", ".join(f"{k} ({v})" for k, v in CATEGORIAS.items())
 
@@ -66,8 +71,10 @@ def construir_servidor_memoria(memoria: Memory) -> Any:
         contenido = memoria.cargar() or "Todavía no hay nada anotado."
         return {"content": [{"type": "text", "text": contenido}]}
 
+    from .sistema import herramientas_de_sistema
+
     return create_sdk_mcp_server(
         name="jarvis",
         version="1.0.0",
-        tools=[recordar, olvidar, consultar_memoria],
+        tools=[recordar, olvidar, consultar_memoria, *herramientas_de_sistema()],
     )

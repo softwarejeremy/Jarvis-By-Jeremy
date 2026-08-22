@@ -197,3 +197,20 @@ class TestPermissionGuard:
         r = await guard("HerramientaNuevaQueNoConozco", {}, None)
         assert r.behavior == "allow"
         assert len(preguntas) == 1
+
+
+class TestDescribirHerramientasPropias:
+    """Una pregunta que no se entiende no es una confirmación, es un trámite."""
+
+    def test_abrir_dice_qué_va_a_abrir(self):
+        d = describir_para_voz("mcp__jarvis__abrir", {"objetivo": "la calculadora"})
+        assert "abrir la calculadora" in d
+        assert "mcp__jarvis__" not in d, "el nombre técnico no se lee en voz alta"
+
+    def test_abrir_sin_objetivo_no_queda_raro(self):
+        assert "algo" in describir_para_voz("mcp__jarvis__abrir", {})
+
+    def test_bloquear_se_explica_solo(self):
+        d = describir_para_voz("mcp__jarvis__bloquear_pantalla", {})
+        assert "bloquear la pantalla" in d
+        assert "mcp__jarvis__" not in d

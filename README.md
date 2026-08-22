@@ -223,6 +223,29 @@ Todo tiene valores por defecto razonables. Los ajustes que más se tocan:
 
 ---
 
+## Qué puede hacer con tu equipo
+
+Además de leer y escribir archivos y buscar en la web, tiene herramientas propias:
+
+| Le dices | Hace | ¿Pregunta? |
+|---|---|---|
+| «sube el volumen», «silencio» | Volumen del sistema | No |
+| «qué hora es» | Fecha y hora | No |
+| «abre Spotify», «abre mi carpeta de proyectos» | Lanza programas, archivos o webs | **Sí** |
+| «bloquea la pantalla» | Bloquea la sesión | **Sí** |
+| «recuerda que…», «olvida lo de…» | Memoria de largo plazo | No |
+
+El criterio de qué pregunta y qué no es simple: se ejecuta solo lo que no puede
+romper nada y cuyo efecto es evidente e inmediatamente reversible — oír el volumen
+subir es su propia confirmación. Lanzar programas no cumple eso, así que pregunta.
+
+**No abre intérpretes de comandos** (`cmd`, `powershell`, `bash`…) aunque se lo
+autorices. Todo comando de shell se lee en voz alta antes de ejecutarse; si pudiera
+«abrir» una consola, bastaría eso para ejecutar cualquier cosa sin que nadie la
+enunciara, y el sistema de permisos entero quedaría sin efecto.
+
+---
+
 ## Permisos: cómo evita romperte cosas
 
 El reconocimiento de voz se equivoca, y un *"borra eso"* mal entendido no tiene deshacer.
@@ -261,7 +284,7 @@ jarvis/
 │   ├── player.py     Reproducción interrumpible
 │   └── tts/          edge · sapi · elevenlabs
 ├── hotkey.py         Push-to-talk global
-├── tools/            Herramientas propias, expuestas a Claude vía MCP
+├── tools/            Memoria y control del equipo, expuestos a Claude vía MCP
 ├── server/           HUD web: FastAPI + WebSocket, micrófono del navegador y TLS
 └── ui/console.py     HUD de terminal
 ```
@@ -287,7 +310,7 @@ que tocar.
 
 ```bash
 pip install -e ".[voice,dev,web]"
-pytest              # 167 tests, sin necesidad de micrófono
+pytest              # 195 tests, sin necesidad de micrófono
 ruff check jarvis tests
 ```
 
@@ -355,11 +378,12 @@ Implementado y probado:
 - [x] Permisos con confirmación por voz
 - [x] Memoria de largo plazo
 - [x] Diagnóstico y modos demo/simulación
-- [x] HUD web, accesible desde el móvil
+- [x] HUD web, accesible desde el móvil, con micrófono del navegador
+- [x] Herramientas de sistema: volumen, abrir programas, bloquear
+- [x] Integración continua
 
 Pendiente:
 
-- [ ] Herramientas de sistema (volumen, abrir aplicaciones, música)
 - [ ] Arranque automático con Windows
 
 > **Nota sobre las pruebas.** El código de audio se ha desarrollado y verificado con

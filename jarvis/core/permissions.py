@@ -33,6 +33,19 @@ from ..events import EventBus, EventType
 # Devuelve True si el usuario autoriza. Recibe la frase que hay que decirle.
 Confirmador = Callable[[str], Awaitable[bool]]
 
+# Herramientas propias que no necesitan confirmación. El criterio es que no
+# puedan romper nada y que su efecto sea evidente e inmediatamente reversible:
+# oír el volumen subir es su propia confirmación. Todo lo demás —abrir
+# programas, bloquear la pantalla— pasa por el «sí» hablado como cualquier
+# otra cosa.
+PROPIAS_AUTOMATICAS = frozenset({
+    "mcp__jarvis__recordar",
+    "mcp__jarvis__olvidar",
+    "mcp__jarvis__consultar_memoria",
+    "mcp__jarvis__hora",
+    "mcp__jarvis__volumen",
+})
+
 # Campos donde las distintas herramientas guardan la ruta que van a tocar.
 _CAMPOS_RUTA = ("file_path", "path", "notebook_path", "filePath")
 
@@ -96,9 +109,11 @@ class PermissionGuard:
     def _es_automatica(self, tool_name: str) -> bool:
         if tool_name in self._s.permissions.auto_allow:
             return True
-        # Las herramientas propias de J.A.R.V.I.S. (memoria, sistema) llegan
-        # con el prefijo mcp__jarvis__ y son seguras por construcción.
-        return tool_name.startswith("mcp__jarvis__")
+        # Las herramientas propias se autorizan **una por una**, no por
+        # prefijo. Confiar en `mcp__jarvis__*` en bloque significaba que
+        # cualquier herramienta nueva nacía autorizada, y no todas son
+        # inofensivas: anotar un dato lo es, abrir un programa no.
+        return tool_name in PROPIAS_AUTOMATICAS
 
     def _rutas_permitidas(self) -> list[Path]:
         rutas = [self._s.workspace, *self._s.permissions.writable_paths]
@@ -152,6 +167,16 @@ def describir_para_voz(tool_name: str, input_data: dict[str, Any]) -> str:
 
     if tool_name == "KillShell":
         return "Voy a detener un proceso en ejecución. ¿Lo autoriza?"
+
+    # Las herramientas propias se enuncian por lo que hacen. "Voy a usar la
+    # herramienta mcp__jarvis__abrir" no le dice nada a nadie, y una pregunta
+    # que no se entiende no es una confirmación: es un trámite.
+    if tool_name == "mcp__jarvis__abrir":
+        objetivo = str(input_data.get("objetivo", "")).strip() or "algo"
+        return f"Voy a abrir {objetivo}. ¿Lo autoriza?"
+
+    if tool_name == "mcp__jarvis__bloquear_pantalla":
+        return "Voy a bloquear la pantalla. ¿Lo autoriza?"
 
     return f"Voy a usar la herramienta {tool_name}. ¿Lo autoriza?"
 

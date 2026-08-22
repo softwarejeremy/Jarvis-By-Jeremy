@@ -108,12 +108,12 @@ def _construir(args: argparse.Namespace, s: Settings, bus: EventBus):  # noqa: A
     if args.demo or not s.has_api_key:
         agent = DemoAgent()
     else:
-        from .tools.memory_tool import construir_servidor_memoria
+        from .tools.memory_tool import construir_servidor_jarvis
 
         agent = Agent(
             s,
             can_use_tool=PermissionGuard(s, confirmar, bus),
-            mcp_servers={"jarvis": construir_servidor_memoria(memoria)},
+            mcp_servers={"jarvis": construir_servidor_jarvis(memoria)},
             memoria=memoria.cargar(),
         )
 
