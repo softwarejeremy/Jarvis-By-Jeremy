@@ -267,18 +267,47 @@ class JarvisCore:
                 await self._decir_ahora(saludo)
 
             audio = await self._capturar_frase(State.ESCUCHANDO)
+            await self._entender_y_responder(audio)
 
-            self._set_state(State.TRANSCRIBIENDO)
-            texto = await self._transcribir(audio)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            self.bus.emit(EventType.ERROR, message=str(exc))
+            self._set_state(State.DORMIDO)
 
-            if not texto:
-                await self._decir_ahora(random.choice(NO_ENTENDI))
-                self._set_state(State.DORMIDO)
-                return
+    async def _entender_y_responder(self, audio: np.ndarray) -> None:
+        """Transcribe un audio ya grabado y contesta.
 
-            self.bus.emit(EventType.FINAL_TRANSCRIPT, text=texto)
-            await self.responder(texto)
+        Lo comparten la escucha por micrófono y el audio que llega del
+        navegador: da igual de dónde venga la voz, a partir de aquí el camino
+        es el mismo.
+        """
+        self._set_state(State.TRANSCRIBIENDO)
+        texto = await self._transcribir(audio)
 
+        if not texto:
+            await self._decir_ahora(random.choice(NO_ENTENDI))
+            self._set_state(State.DORMIDO)
+            return
+
+        self.bus.emit(EventType.FINAL_TRANSCRIPT, text=texto)
+        await self.responder(texto)
+
+    async def escuchar_audio(self, audio: np.ndarray) -> None:
+        """Atiende una grabación llegada de fuera, típicamente del móvil.
+
+        Es pulsar-para-hablar, no escucha continua: el navegador manda la
+        frase entera de una vez. Así no compite con el micrófono del equipo
+        —que podría estar oyendo lo mismo— ni hay que sincronizar dos flujos
+        de audio, que es donde este tipo de sistemas se rompen.
+        """
+        self._lanzar(self._turno_desde_audio(audio))
+
+    async def _turno_desde_audio(self, audio: np.ndarray) -> None:
+        try:
+            self.player.interrumpir()
+            self._vaciar_cola_voz()
+            await self._entender_y_responder(audio)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001

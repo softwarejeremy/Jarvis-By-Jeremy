@@ -123,6 +123,7 @@ python -m jarvis --demo           # sin clave ni gasto: respuestas simuladas
 python -m jarvis --muda           # sin audio de salida, sólo texto
 python -m jarvis --sim audio.wav  # inyecta un WAV en vez del micrófono
 python -m jarvis --web            # además, el HUD en el navegador
+python -m jarvis --web --https    # y poder hablarle desde el móvil
 python -m jarvis --diag           # diagnóstico
 ```
 
@@ -157,9 +158,29 @@ misma wifi. La primera vez Windows preguntará si permites la conexión: hay que
 decir que sí **para la red privada**. Si no aparece la segunda línea, es que el
 equipo no está en ninguna red local.
 
-Si no hay micrófono en el equipo, el botón de escuchar aparece desactivado y sólo
-funciona la entrada por texto. Y con `--web --texto` el teclado del navegador es la
-única entrada, sin tocar el micrófono.
+### Hablarle desde el móvil
+
+```powershell
+python -m jarvis --web --https
+```
+
+Con `--https`, el botón se convierte en **mantén pulsado para hablar**: grabas con
+el micrófono del propio teléfono y J.A.R.V.I.S. te contesta.
+
+El `--https` no es un capricho. Los navegadores sólo dan acceso al micrófono en
+*contexto seguro* —HTTPS o `localhost`—, y sobre `http://192.168.1.x`
+`navigator.mediaDevices` sencillamente no existe. Sin TLS no hay micrófono, y punto.
+
+El certificado se genera solo la primera vez y se guarda; **es autofirmado**, así que
+el navegador avisará de que el sitio no es de confianza. Acéptalo: es tu propio
+equipo, en tu propia red. Sólo hay que hacerlo una vez por dispositivo.
+
+Si cambias de wifi y el equipo recibe otra IP, el certificado se rehace solo para
+incluirla.
+
+Si no hay micrófono por ningún lado, el botón aparece desactivado explicando por qué,
+y siempre queda la entrada por texto. Con `--web --texto` el teclado del navegador es
+la única entrada, sin tocar ningún micrófono.
 
 ---
 
@@ -241,7 +262,7 @@ jarvis/
 │   └── tts/          edge · sapi · elevenlabs
 ├── hotkey.py         Push-to-talk global
 ├── tools/            Herramientas propias, expuestas a Claude vía MCP
-├── server/           HUD web: FastAPI + WebSocket sobre el mismo núcleo
+├── server/           HUD web: FastAPI + WebSocket, micrófono del navegador y TLS
 └── ui/console.py     HUD de terminal
 ```
 
@@ -266,7 +287,7 @@ que tocar.
 
 ```bash
 pip install -e ".[voice,dev,web]"
-pytest              # 151 tests, sin necesidad de micrófono
+pytest              # 167 tests, sin necesidad de micrófono
 ruff check jarvis tests
 ```
 

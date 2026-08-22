@@ -20,7 +20,7 @@ from jarvis.audio.stt import FakeTranscriber
 from jarvis.audio.wakeword import NullWakeWord
 from jarvis.core.core import JarvisCore
 from jarvis.events import EventType
-from jarvis.server.app import _atender, crear_app
+from jarvis.server.app import _atender, _atender_audio, crear_app
 
 from .conftest import FakeAgent, FakeTTS
 
@@ -130,3 +130,92 @@ class TestOrdenes:
         core = construir_core(settings)
         await _atender(core, {"type": "algo_que_no_existe"})
         await _atender(core, {})
+
+
+class TestAudioDelNavegador:
+    """Pulsar-para-hablar desde el móvil.
+
+    El navegador manda la frase entera como PCM binario por el mismo
+    WebSocket. Lo que hay que fijar aquí es qué se acepta y qué se rechaza:
+    el otro extremo es código que no controlamos del todo.
+    """
+
+    @staticmethod
+    def pcm(segundos: float, tasa: int = 16_000) -> bytes:
+        """Audio de prueba: PCM 16 bits, mono."""
+        n = int(segundos * tasa)
+        return (np.zeros(n, dtype=np.int16) + 1000).tobytes()
+
+    async def test_una_grabacion_valida_llega_al_nucleo(self, settings):
+        core = construir_core(settings)
+        recibido = {}
+
+        async def capturar(audio):  # noqa: ANN001, ANN202
+            recibido["audio"] = audio
+
+        core.escuchar_audio = capturar
+        await _atender_audio(core, self.pcm(1.5))
+
+        audio = recibido["audio"]
+        assert audio.dtype == np.float32, "el núcleo trabaja en float32"
+        assert len(audio) == 24_000, "1,5 s a 16 kHz"
+        assert -1.0 <= audio.min() and audio.max() <= 1.0, "normalizado"
+
+    async def test_una_grabacion_muy_corta_se_descarta(self, settings):
+        """Casi siempre es el botón rozado sin querer."""
+        core = construir_core(settings)
+        llamadas = []
+
+        async def capturar(audio):  # noqa: ANN001, ANN202
+            llamadas.append(audio)
+
+        core.escuchar_audio = capturar
+        await _atender_audio(core, self.pcm(0.05))
+        assert llamadas == []
+
+    async def test_una_grabacion_enorme_se_rechaza(self, settings):
+        core = construir_core(settings)
+        eventos = []
+        core.bus.on(eventos.append)
+        llamadas = []
+
+        async def capturar(audio):  # noqa: ANN001, ANN202
+            llamadas.append(audio)
+
+        core.escuchar_audio = capturar
+        await _atender_audio(core, b"\x00" * 3_000_000)
+
+        assert llamadas == []
+        assert any(e.type.value == "error" for e in eventos)
+
+    async def test_un_numero_impar_de_bytes_no_revienta(self, settings):
+        """PCM de 16 bits siempre ocupa un número par: si llega impar, vino
+        cortado. Se recorta en vez de fallar al interpretarlo."""
+        core = construir_core(settings)
+        recibido = {}
+
+        async def capturar(audio):  # noqa: ANN001, ANN202
+            recibido["audio"] = audio
+
+        core.escuchar_audio = capturar
+        await _atender_audio(core, self.pcm(1.0) + b"\x7f")
+
+        assert len(recibido["audio"]) == 16_000
+
+
+class TestEscucharAudioEnElNucleo:
+    async def test_transcribe_y_responde(self, settings):
+        core = construir_core(settings)
+        core.transcriber = FakeTranscriber(["enciende la luz"])
+
+        await core.start()
+        try:
+            await core.escuchar_audio(np.zeros(16_000, dtype=np.float32))
+            for _ in range(200):
+                if core.agent.preguntas:
+                    break
+                await asyncio.sleep(0.01)
+        finally:
+            await core.stop()
+
+        assert core.agent.preguntas == ["enciende la luz"]

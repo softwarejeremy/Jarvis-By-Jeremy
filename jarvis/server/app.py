@@ -27,6 +27,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from ..events import EventType
+
 if TYPE_CHECKING:
     from ..core.core import JarvisCore
 
@@ -110,8 +112,22 @@ def crear_app(core: JarvisCore) -> FastAPI:
 
         async def desde_el_navegador() -> None:
             while True:
-                mensaje = await ws.receive_json()
-                await _atender(core, mensaje)
+                # El navegador manda órdenes en JSON y la voz en binario, por
+                # el mismo socket. `receive()` da ambos sin tener que abrir una
+                # segunda conexión sólo para el audio.
+                paquete = await ws.receive()
+
+                if paquete.get("type") == "websocket.disconnect":
+                    return
+
+                crudo = paquete.get("bytes")
+                if crudo is not None:
+                    await _atender_audio(core, crudo)
+                    continue
+
+                texto = paquete.get("text")
+                if texto:
+                    await _atender(core, json.loads(texto))
 
         salida = asyncio.create_task(hacia_el_navegador())
         entrada = asyncio.create_task(desde_el_navegador())
@@ -133,6 +149,37 @@ def crear_app(core: JarvisCore) -> FastAPI:
     return app
 
 
+# Un minuto de voz a 16 kHz en 16 bits son ~1,9 MB. Más que eso no es una
+# frase, es un error o alguien probando cosas raras: se descarta.
+MAX_AUDIO_BYTES = 2_000_000
+# Menos de esto no da ni para una palabra; casi siempre es un botón pulsado
+# sin querer. Transcribirlo sólo gastaría tiempo para devolver vacío.
+MIN_AUDIO_BYTES = 4_000  # ~0,12 s
+
+
+async def _atender_audio(core: JarvisCore, crudo: bytes) -> None:
+    """Recibe una grabación del navegador: PCM 16 bits, mono, 16 kHz."""
+    import numpy as np
+
+    if len(crudo) < MIN_AUDIO_BYTES:
+        core.bus.emit(EventType.LOG, message="Grabación demasiado corta; la ignoro.")
+        return
+
+    if len(crudo) > MAX_AUDIO_BYTES:
+        core.bus.emit(
+            EventType.ERROR,
+            message="La grabación es demasiado larga. Inténtelo en frases más cortas.",
+        )
+        return
+
+    # Un número impar de bytes no puede ser PCM de 16 bits: llegó cortado.
+    if len(crudo) % 2:
+        crudo = crudo[:-1]
+
+    audio = np.frombuffer(crudo, dtype=np.int16).astype(np.float32) / 32768.0
+    await core.escuchar_audio(audio)
+
+
 async def _atender(core: JarvisCore, mensaje: dict[str, Any]) -> None:
     """Ejecuta una orden llegada del navegador."""
     tipo = mensaje.get("type")
@@ -151,9 +198,29 @@ async def _atender(core: JarvisCore, mensaje: dict[str, Any]) -> None:
         core.player.interrumpir()
 
 
-async def servir(core: JarvisCore, host: str = "0.0.0.0", puerto: int = 8765) -> None:
-    """Arranca el servidor dentro del loop que ya está corriendo."""
+async def servir(
+    core: JarvisCore,
+    host: str = "0.0.0.0",
+    puerto: int = 8765,
+    *,
+    https: bool = False,
+) -> None:
+    """Arranca el servidor dentro del loop que ya está corriendo.
+
+    Con ``https=True`` se sirve con un certificado autofirmado. Es feo —el
+    navegador avisa la primera vez— pero es la única forma de que el móvil
+    pueda usar el micrófono: fuera de `localhost`, los navegadores sólo
+    exponen `getUserMedia` en contexto seguro.
+    """
     import uvicorn
+
+    extra: dict[str, Any] = {}
+    if https:
+        from .tls import asegurar_certificado
+
+        ip = ip_local()
+        cert, clave = asegurar_certificado(core.s.data_dir, [ip] if ip else [])
+        extra = {"ssl_certfile": str(cert), "ssl_keyfile": str(clave)}
 
     configuracion = uvicorn.Config(
         crear_app(core),
@@ -161,5 +228,6 @@ async def servir(core: JarvisCore, host: str = "0.0.0.0", puerto: int = 8765) ->
         port=puerto,
         log_level="warning",   # el HUD ya cuenta lo que pasa; el log sólo estorba
         access_log=False,
+        **extra,
     )
     await uvicorn.Server(configuracion).serve()

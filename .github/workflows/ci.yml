@@ -10,9 +10,12 @@
 
 name: CI
 
+# Sólo `main` en push: las ramas con PR abierto ya se comprueban por el
+# evento `pull_request`, y disparar ambos gastaba el doble de minutos en cada
+# empujón para obtener exactamente el mismo resultado.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

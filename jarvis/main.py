@@ -39,6 +39,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--muda", action="store_true", help="no reproducir audio (sólo texto)")
     p.add_argument("--web", action="store_true", help="abrir el HUD en el navegador")
     p.add_argument("--puerto", type=int, default=8765, help="puerto del HUD (por defecto 8765)")
+    p.add_argument(
+        "--https",
+        action="store_true",
+        help="servir el HUD con TLS: hace falta para usar el micrófono desde el móvil",
+    )
     p.add_argument("--diag", action="store_true", help="diagnosticar el equipo y salir")
     p.add_argument("--config", metavar="TOML", help="ruta a un config.toml alternativo")
     p.add_argument("-v", "--verbose", action="store_true", help="salida detallada")
@@ -178,18 +183,32 @@ async def _main_async(args: argparse.Namespace) -> int:
     if args.web:
         from .server.app import ip_local, servir
 
-        tareas.append(asyncio.create_task(servir(core, puerto=args.puerto)))
+        tareas.append(
+            asyncio.create_task(servir(core, puerto=args.puerto, https=args.https))
+        )
 
+        esquema = "https" if args.https else "http"
         hud.console.print(
-            f"  [bold cyan]HUD aquí:[/bold cyan]      http://localhost:{args.puerto}"
+            f"  [bold cyan]HUD aquí:[/bold cyan]      {esquema}://localhost:{args.puerto}"
         )
         # La IP se calcula sola: pedirle al usuario que interprete `ipconfig`
         # es trasladarle un trabajo que la máquina hace mejor.
         ip = ip_local()
         if ip:
             hud.console.print(
-                f"  [bold cyan]desde el móvil:[/bold cyan] http://{ip}:{args.puerto}"
+                f"  [bold cyan]desde el móvil:[/bold cyan] {esquema}://{ip}:{args.puerto}"
                 "  [dim](misma red wifi)[/dim]"
+            )
+
+        if args.https:
+            hud.console.print(
+                "  [dim]El certificado es autofirmado: el navegador avisará la primera\n"
+                "  vez. Acepte para continuar; es su propio equipo.[/dim]"
+            )
+        elif ip:
+            hud.console.print(
+                "  [yellow]Para hablarle desde el móvil hace falta --https:[/yellow]\n"
+                "  [dim]los navegadores sólo dan acceso al micrófono en contexto seguro.[/dim]"
             )
         hud.console.print()
 

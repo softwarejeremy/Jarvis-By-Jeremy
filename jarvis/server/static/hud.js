@@ -233,8 +233,172 @@ function resumirEntrada(entrada) {
   return "";
 }
 
+function etiquetarBoton(texto) {
+  // El botón lleva un icono SVG y, detrás, su texto como nodo suelto. Se
+  // reemplaza sólo ese nodo para no tocar el icono.
+  for (const nodo of el.btnEscuchar.childNodes) {
+    if (nodo.nodeType === Node.TEXT_NODE && nodo.textContent.trim()) {
+      nodo.textContent = " " + texto;
+      return;
+    }
+  }
+  el.btnEscuchar.append(" " + texto);
+}
+
 function bajarDelTodo() {
   el.conversacion.scrollTop = el.conversacion.scrollHeight;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Micrófono del navegador: pulsar y mantener para hablar.
+
+   Sirve sobre todo para el móvil, que es un mando de voz sin
+   micrófono propio conectado al núcleo. Se manda la frase entera
+   de una vez, no un flujo continuo: así no compite con el
+   micrófono del equipo ni hay que sincronizar dos fuentes de
+   audio, que es donde estos sistemas se rompen.
+
+   AVISO IMPORTANTE: el navegador sólo expone el micrófono en
+   contexto seguro (HTTPS o localhost). Sobre http://192.168.x.x
+   `navigator.mediaDevices` ni siquiera existe — por eso el
+   servidor puede arrancar con --https.
+   ═══════════════════════════════════════════════════════════════ */
+
+const TASA = 16000;          // lo que esperan Whisper y el VAD
+const MAX_SEGUNDOS = 30;     // freno: más que esto no es una frase
+
+const mic = {
+  disponible: Boolean(navigator.mediaDevices?.getUserMedia),
+  ctx: null,
+  fuente: null,
+  procesador: null,
+  flujo: null,
+  trozos: [],
+  grabando: false,
+};
+
+function contextoSeguro() {
+  return window.isSecureContext;
+}
+
+async function prepararMicrofono() {
+  if (mic.ctx) return true;
+
+  try {
+    mic.flujo = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,   // no queremos oír a J.A.R.V.I.S. a sí mismo
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+  } catch (e) {
+    registrar(`No se pudo abrir el micrófono: ${e.message}`, "error");
+    return false;
+  }
+
+  // Se pide 16 kHz directamente; si el navegador lo ignora, se remuestrea
+  // luego a mano.
+  mic.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TASA });
+  if (mic.ctx.state === "suspended") await mic.ctx.resume();
+
+  mic.fuente = mic.ctx.createMediaStreamSource(mic.flujo);
+  mic.procesador = mic.ctx.createScriptProcessor(4096, 1, 1);
+
+  mic.procesador.onaudioprocess = (ev) => {
+    if (!mic.grabando) return;
+    mic.trozos.push(new Float32Array(ev.inputBuffer.getChannelData(0)));
+
+    const muestras = mic.trozos.length * 4096;
+    if (muestras / mic.ctx.sampleRate > MAX_SEGUNDOS) pararGrabacion();
+  };
+
+  // El procesador sólo corre si está conectado a la salida, pero conectarlo
+  // directamente devolvería el micrófono por los altavoces. Un nodo de
+  // ganancia a cero lo mantiene vivo y en silencio.
+  const mudo = mic.ctx.createGain();
+  mudo.gain.value = 0;
+  mic.fuente.connect(mic.procesador);
+  mic.procesador.connect(mudo);
+  mudo.connect(mic.ctx.destination);
+
+  return true;
+}
+
+async function empezarGrabacion() {
+  if (mic.grabando) return;
+  if (!(await prepararMicrofono())) return;
+
+  mic.trozos = [];
+  mic.grabando = true;
+  el.btnEscuchar.classList.add("grabando");
+  el.panelReactor.dataset.estado = "escuchando";
+  el.reactor.dataset.estado = "escuchando";
+  el.estado.textContent = "grabando";
+  el.pista.textContent = "Suelte para enviar";
+}
+
+function pararGrabacion() {
+  if (!mic.grabando) return;
+  mic.grabando = false;
+  el.btnEscuchar.classList.remove("grabando");
+
+  const pcm = aInt16(unir(mic.trozos), mic.ctx.sampleRate);
+  mic.trozos = [];
+
+  if (pcm.byteLength < 4000) {
+    registrar("Grabación demasiado corta.", "");
+    pintarEstado("dormido");
+    return;
+  }
+
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    registrar("Sin conexión: no se ha enviado el audio.", "error");
+    pintarEstado("dormido");
+    return;
+  }
+
+  socket.send(pcm);
+  el.estado.textContent = "enviando";
+  el.pista.textContent = "Enviando su voz…";
+}
+
+function unir(trozos) {
+  let total = 0;
+  for (const t of trozos) total += t.length;
+  const salida = new Float32Array(total);
+  let i = 0;
+  for (const t of trozos) { salida.set(t, i); i += t.length; }
+  return salida;
+}
+
+/* Remuestreo lineal + conversión a PCM de 16 bits.
+
+   Lineal y no algo más fino a propósito: la voz ya viene limitada en banda
+   por el micrófono, Whisper es muy tolerante, y hacerlo aquí evita mandar
+   tres veces más bytes por la wifi. */
+function aInt16(muestras, tasaOrigen) {
+  let datos = muestras;
+
+  if (tasaOrigen !== TASA) {
+    const factor = tasaOrigen / TASA;
+    const largo = Math.floor(muestras.length / factor);
+    datos = new Float32Array(largo);
+    for (let i = 0; i < largo; i++) {
+      const pos = i * factor;
+      const a = Math.floor(pos);
+      const b = Math.min(a + 1, muestras.length - 1);
+      datos[i] = muestras[a] + (muestras[b] - muestras[a]) * (pos - a);
+    }
+  }
+
+  const pcm = new Int16Array(datos.length);
+  for (let i = 0; i < datos.length; i++) {
+    const v = Math.max(-1, Math.min(1, datos[i]));
+    pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+  }
+  return pcm.buffer;
 }
 
 /* ── Interacción ───────────────────────────────────────────── */
@@ -250,7 +414,38 @@ el.formulario.addEventListener("submit", (ev) => {
   }
 });
 
-el.btnEscuchar.addEventListener("click", () => enviar({ type: "escuchar" }));
+/* El botón hace una cosa u otra según de dónde pueda salir la voz:
+
+   - Micrófono del navegador (móvil, o el PC por HTTPS/localhost): pulsar y
+     mantener. La grabación se manda al soltar.
+   - Sin micrófono en el navegador pero sí en el equipo: un clic normal, y
+     escucha el micrófono del PC.
+   - Ninguno de los dos: desactivado, y se dice por qué. */
+function usaMicrofonoDelNavegador() {
+  return mic.disponible && contextoSeguro();
+}
+
+if (usaMicrofonoDelNavegador()) {
+  // `pointer*` cubre ratón y dedo con los mismos manejadores.
+  el.btnEscuchar.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    // Sin captura, si el dedo se desliza fuera del botón nunca llega el
+    // "pointerup" y la grabación se quedaría abierta para siempre.
+    el.btnEscuchar.setPointerCapture(ev.pointerId);
+    empezarGrabacion();
+  });
+  for (const evento of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    el.btnEscuchar.addEventListener(evento, () => pararGrabacion());
+  }
+  // Si la pestaña se va a segundo plano a media grabación, se cierra: nadie
+  // quiere descubrir que su móvil llevaba diez minutos grabando.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) pararGrabacion();
+  });
+} else {
+  el.btnEscuchar.addEventListener("click", () => enviar({ type: "escuchar" }));
+}
+
 el.btnInterrumpir.addEventListener("click", () => enviar({ type: "interrumpir" }));
 
 // Barra espaciadora para hablar. Sólo cuando no hay nada enfocado: si el foco
@@ -272,14 +467,21 @@ fetch("/api/estado")
     el.modelo.textContent = s.modelo || "—";
     el.voz.textContent = s.voz || "—";
     el.coste.textContent = "$" + Number(s.coste_usd || 0).toFixed(4);
-    hayMicrofono = Boolean(s.microfono);
+    hayMicrofono = Boolean(s.microfono) || usaMicrofonoDelNavegador();
 
-    if (!hayMicrofono) {
-      // Sin micrófono real, pulsar «Escuchar» dejaría al núcleo esperando
-      // un audio que nunca llegará. Mejor decirlo que dejarlo colgado.
+    if (usaMicrofonoDelNavegador()) {
+      etiquetarBoton("Mantén para hablar");
+      PISTAS.dormido = "Mantén pulsado el botón y habla";
+    } else if (!s.microfono) {
+      // Ni micrófono en el navegador ni en el equipo: pulsar dejaría al
+      // núcleo esperando un audio que nunca llega. Mejor decir por qué.
       el.btnEscuchar.disabled = true;
-      el.btnEscuchar.title = "No hay micrófono disponible en este equipo";
-      PISTAS.dormido = "Sin micrófono: escríbele abajo";
+      el.btnEscuchar.title = mic.disponible
+        ? "El navegador sólo da acceso al micrófono por HTTPS. Arranca con --https."
+        : "Este navegador no permite usar el micrófono";
+      PISTAS.dormido = mic.disponible
+        ? "Sin HTTPS no hay micrófono aquí: escríbele abajo"
+        : "Sin micrófono: escríbele abajo";
     } else if (!s.wake_word) {
       PISTAS.dormido = s.atajo
         ? `Pulsa el botón o ${s.atajo}`
