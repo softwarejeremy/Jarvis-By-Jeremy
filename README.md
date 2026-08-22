@@ -142,9 +142,18 @@ usa y el gasto acumulado.
 Es el **mismo núcleo**: lo que digas por voz sale en la pantalla, y lo que escribas
 en la pantalla lo contesta por voz. No son dos programas.
 
-**Desde el móvil**, con el PC encendido y en la misma red: mira tu IP local con
-`ipconfig` y entra en `http://192.168.1.XX:8765`. La primera vez Windows puede
-preguntar si permites la conexión — hay que decir que sí para la red privada.
+**Desde el móvil**: al arrancar con `--web`, J.A.R.V.I.S. te imprime las dos
+direcciones, ya calculadas:
+
+```
+HUD aquí:       http://localhost:8765
+desde el móvil: http://192.168.1.37:8765  (misma red wifi)
+```
+
+Escribe esa segunda en el navegador del móvil, con el PC encendido y ambos en la
+misma wifi. La primera vez Windows preguntará si permites la conexión: hay que
+decir que sí **para la red privada**. Si no aparece la segunda línea, es que el
+equipo no está en ninguna red local.
 
 Si no hay micrófono en el equipo, el botón de escuchar aparece desactivado y sólo
 funciona la entrada por texto. Y con `--web --texto` el teclado del navegador es la
@@ -255,7 +264,7 @@ que tocar.
 
 ```bash
 pip install -e ".[voice,dev]"
-pytest              # 147 tests, sin necesidad de micrófono
+pytest              # 151 tests, sin necesidad de micrófono
 ruff check jarvis
 ```
 
@@ -294,6 +303,12 @@ aun así aparece, fuerza CPU poniendo `device = "cpu"` en la sección `[stt]` de
 **Tengo GPU NVIDIA pero va en CPU** → Falta cuDNN 9 para CUDA 12, que faster-whisper
 necesita y no se instala con pip. Funciona igual en CPU, sólo más despacio; instalándolo
 ganarías velocidad y podrías subir a `stt.model_size = "medium"`, más preciso en español.
+
+**Se queda en «transcribiendo» y no sale** → Casi siempre es la primera vez que
+transcribe y está **descargando el modelo** (unos 500 MB), que se ve igual que un
+cuelgue. Ejecuta `python -m jarvis --diag` una vez para bajarlo con calma. Desde la
+versión actual hay un tope de tiempo (`stt.timeout_s`, 45 s) y un vigilante que
+devuelve a J.A.R.V.I.S. a reposo si algún estado se atasca, avisando de lo ocurrido.
 
 **Se interrumpe solo mientras habla** → Está oyendo su propia voz por los altavoces.
 Usa auriculares, o pon `audio.barge_in = false`.

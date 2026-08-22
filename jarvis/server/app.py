@@ -33,6 +33,28 @@ if TYPE_CHECKING:
 ESTATICOS = Path(__file__).parent / "static"
 
 
+def ip_local() -> str | None:
+    """La IP de este equipo en la red local, para entrar desde el móvil.
+
+    El truco es abrir un socket UDP "hacia" una dirección de internet: no se
+    envía ningún paquete, pero el sistema elige la interfaz de salida y con
+    ella la IP que los demás equipos de la red ven. Es mucho más fiable que
+    `gethostname()`, que en Windows suele devolver 127.0.0.1, y le ahorra al
+    usuario tener que interpretar la salida de `ipconfig`.
+    """
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.settimeout(0.2)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+        except OSError:
+            return None
+
+    return ip if ip and not ip.startswith("127.") else None
+
+
 def _a_json(dato: Any) -> Any:
     """Convierte lo que no sea serializable (rutas, enums) en texto."""
     return str(dato)

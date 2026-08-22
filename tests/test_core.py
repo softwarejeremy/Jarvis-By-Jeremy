@@ -352,3 +352,95 @@ class TestParadaLimpia:
 @pytest.mark.parametrize("estado", list(State))
 def test_todos_los_estados_tienen_nombre_legible(estado):
     assert estado.value and estado.value.islower()
+
+
+class TestNoSeQuedaColgado:
+    """Ningún estado puede durar para siempre.
+
+    Jeremy reportó que J.A.R.V.I.S. se quedó en «transcribiendo» hasta que
+    cerró la ventana. La causa más probable era la descarga del modelo en la
+    primera transcripción, pero la lección es más general: si un paso puede
+    tardar indefinidamente, hace falta un tope y una forma de recuperarse.
+    Quedarse mudo sin explicación es indistinguible de estar roto.
+    """
+
+    async def test_una_transcripcion_eterna_no_bloquea(self, settings):
+        settings.stt.timeout_s = 0.2
+
+        class TranscriptorColgado:
+            device = compute_type = "fake"
+            motivo_repliegue = None
+
+            def cargar(self):  # noqa: ANN201
+                ...
+
+            async def transcribir(self, audio):  # noqa: ANN001, ANN201
+                del audio
+                await asyncio.sleep(60)  # nunca contesta
+                return "tarde"
+
+        tts = FakeTTS()
+        core, eventos = construir(
+            settings,
+            tts=tts,
+            transcriber=TranscriptorColgado(),
+            wakeword=TriggerWakeWord(3),
+            probabilidades=[0.9] * 10 + [0.0] * 40,
+        )
+        async with NucleoEnMarcha(core):
+            # Ojo: esperar a DORMIDO no serviría, porque ya lo está al arrancar.
+            await esperar_hasta(
+                lambda: any(e.type is EventType.ERROR for e in eventos), timeout=8
+            )
+            await esperar_hasta(lambda: core.state is State.DORMIDO, timeout=8)
+
+        mensajes = " ".join(
+            e.data.get("message", "") for e in eventos if e.type is EventType.ERROR
+        )
+        assert "tardado más de" in mensajes
+        assert any("a tiempo" in f for f in tts.dicho), "debe decirlo, no callarse"
+        assert core.agent.preguntas == []
+
+    async def test_el_vigilante_rescata_un_estado_atascado(self, settings):
+        settings.audio.watchdog_s = 0.4
+        core, eventos = construir(settings)
+
+        await core.start()
+        try:
+            # Simulamos un turno que se quedó a medias y nunca terminó.
+            core._set_state(State.TRANSCRIBIENDO)
+            await esperar_hasta(
+                lambda: any(e.type is EventType.ERROR for e in eventos), timeout=6
+            )
+            await esperar_hasta(lambda: core.state is State.DORMIDO, timeout=6)
+        finally:
+            await core.stop()
+
+        mensajes = " ".join(
+            e.data.get("message", "") for e in eventos if e.type is EventType.ERROR
+        )
+        assert "transcribiendo" in mensajes
+        assert "vuelvo a estar a la escucha" in mensajes
+
+    async def test_el_vigilante_no_molesta_en_reposo(self, settings):
+        """Estar dormido puede durar días: eso no es estar atascado."""
+        settings.audio.watchdog_s = 0.3
+        core, eventos = construir(settings)
+
+        await core.start()
+        try:
+            await asyncio.sleep(0.9)
+        finally:
+            await core.stop()
+
+        assert core.state is State.DORMIDO
+        assert not [e for e in eventos if e.type is EventType.ERROR]
+
+    async def test_se_puede_desactivar_el_vigilante(self, settings):
+        settings.audio.watchdog_s = 0
+        core, _ = construir(settings)
+        await core.start()
+        try:
+            assert core._vigilante is None
+        finally:
+            await core.stop()

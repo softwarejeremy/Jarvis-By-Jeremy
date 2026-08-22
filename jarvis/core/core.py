@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import random
+import time
 from typing import TYPE_CHECKING, Any
 
 from ..audio.capture import FRAME_MS
@@ -88,6 +89,8 @@ class JarvisCore:
         self._turno: asyncio.Task | None = None
         self._cola_voz: asyncio.Queue[str | None] = asyncio.Queue()
         self._worker_voz: asyncio.Task | None = None
+        self._vigilante: asyncio.Task | None = None
+        self._estado_desde = time.monotonic()
         self._parar = asyncio.Event()
 
     # ── estado ──────────────────────────────────────────────────────────
@@ -95,6 +98,7 @@ class JarvisCore:
         if nuevo is self.state:
             return
         anterior, self.state = self.state, nuevo
+        self._estado_desde = time.monotonic()
         self.bus.emit(EventType.STATE_CHANGED, state=nuevo.value, previous=anterior.value)
 
     # ── arranque y parada ───────────────────────────────────────────────
@@ -103,10 +107,18 @@ class JarvisCore:
         self.player.start()
         await self.agent.start()
         self._worker_voz = asyncio.create_task(self._bucle_voz())
+        if self.s.audio.watchdog_s > 0:
+            self._vigilante = asyncio.create_task(self._bucle_vigilante())
 
     async def stop(self) -> None:
         self._parar.set()
         await self._cancelar_turno()
+
+        if self._vigilante is not None:
+            self._vigilante.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._vigilante
+            self._vigilante = None
 
         if self._worker_voz is not None:
             await self._cola_voz.put(None)
@@ -131,6 +143,49 @@ class JarvisCore:
                 self._procesar_frame(frame)
             except Exception as exc:  # noqa: BLE001 - un frame malo no tumba el sistema
                 self.bus.emit(EventType.ERROR, message=f"Fallo procesando audio: {exc}")
+
+    async def _bucle_vigilante(self) -> None:
+        """Devuelve a reposo cualquier estado que se haya quedado atascado.
+
+        Es una red de seguridad, no una excusa para no arreglar las causas.
+        Pero un asistente de voz que se queda mudo sin decir por qué es
+        indistinguible de uno roto: recuperarse y avisar siempre es mejor que
+        esperar en silencio a que el usuario cierre la ventana.
+
+        El estado de reposo se salta a propósito: puede durar días.
+        """
+        limite = self.s.audio.watchdog_s
+        while not self._parar.is_set():
+            await asyncio.sleep(min(5.0, limite / 4))
+
+            if self.state is State.DORMIDO:
+                continue
+            if time.monotonic() - self._estado_desde < limite:
+                continue
+
+            atascado = self.state.value
+            self.bus.emit(
+                EventType.ERROR,
+                message=(
+                    f"Llevaba {limite:.0f} s en «{atascado}» sin avanzar. "
+                    "Lo reinicio y vuelvo a estar a la escucha."
+                ),
+            )
+            await self._recuperarse()
+
+    async def _recuperarse(self) -> None:
+        """Aborta lo que haya en curso y deja el sistema listo otra vez."""
+        with contextlib.suppress(Exception):
+            self.player.interrumpir()
+        self._vaciar_cola_voz()
+        await self._cancelar_turno()
+
+        if self._captura is not None and not self._captura.done():
+            self._captura.cancel()
+        self._captura = None
+        self._grabacion = []
+        self._endpointer.reset()
+        self._set_state(State.DORMIDO)
 
     # ── el bucle de audio ───────────────────────────────────────────────
     def _procesar_frame(self, frame: np.ndarray) -> None:
@@ -214,7 +269,7 @@ class JarvisCore:
             audio = await self._capturar_frase(State.ESCUCHANDO)
 
             self._set_state(State.TRANSCRIBIENDO)
-            texto = (await self.transcriber.transcribir(audio)).strip()
+            texto = await self._transcribir(audio)
 
             if not texto:
                 await self._decir_ahora(random.choice(NO_ENTENDI))
@@ -229,6 +284,39 @@ class JarvisCore:
         except Exception as exc:  # noqa: BLE001
             self.bus.emit(EventType.ERROR, message=str(exc))
             self._set_state(State.DORMIDO)
+
+    async def _transcribir(self, audio: np.ndarray) -> str:
+        """Transcribe con tope de tiempo.
+
+        La primera vez que se usa, faster-whisper puede estar **descargando**
+        el modelo: medio giga que en una conexión normal son varios minutos.
+        Sin avisar, eso se ve exactamente igual que un cuelgue, así que se
+        anuncia; y si aun así se pasa del tope, se abandona el turno en vez de
+        dejar a J.A.R.V.I.S. mudo para siempre.
+        """
+        if getattr(self.transcriber, "_modelo", True) is None:
+            self.bus.emit(
+                EventType.LOG,
+                message="Preparando el modelo de transcripción (la primera vez se descarga).",
+            )
+
+        try:
+            texto = await asyncio.wait_for(
+                self.transcriber.transcribir(audio), timeout=self.s.stt.timeout_s
+            )
+        except (TimeoutError, asyncio.TimeoutError):
+            self.bus.emit(
+                EventType.ERROR,
+                message=(
+                    f"La transcripción ha tardado más de {self.s.stt.timeout_s:.0f} s. "
+                    "Si es la primera vez, puede estar descargándose el modelo: "
+                    "ejecute `python -m jarvis --diag` para bajarlo de una vez."
+                ),
+            )
+            await self._decir_ahora("No he podido entenderle a tiempo.")
+            return ""
+
+        return texto.strip()
 
     async def responder(self, texto: str) -> None:
         """Manda un turno a Claude y va hablando según llega la respuesta.

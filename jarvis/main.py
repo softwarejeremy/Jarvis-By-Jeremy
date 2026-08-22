@@ -176,13 +176,22 @@ async def _main_async(args: argparse.Namespace) -> int:
     escuchador = None
 
     if args.web:
-        from .server.app import servir
+        from .server.app import ip_local, servir
 
         tareas.append(asyncio.create_task(servir(core, puerto=args.puerto)))
+
         hud.console.print(
-            f"  [bold cyan]HUD:[/bold cyan] http://localhost:{args.puerto}"
-            f"  [dim](también desde el móvil, con la IP de este equipo)[/dim]\n"
+            f"  [bold cyan]HUD aquí:[/bold cyan]      http://localhost:{args.puerto}"
         )
+        # La IP se calcula sola: pedirle al usuario que interprete `ipconfig`
+        # es trasladarle un trabajo que la máquina hace mejor.
+        ip = ip_local()
+        if ip:
+            hud.console.print(
+                f"  [bold cyan]desde el móvil:[/bold cyan] http://{ip}:{args.puerto}"
+                "  [dim](misma red wifi)[/dim]"
+            )
+        hud.console.print()
 
     # Con el HUD abierto, la entrada de texto va por el navegador: dos bucles
     # leyendo a la vez se pisarían.

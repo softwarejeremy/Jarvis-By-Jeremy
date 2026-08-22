@@ -73,6 +73,10 @@ class STTSettings(BaseModel):
     language: str = "es"
     # Sesga el reconocimiento hacia el vocabulario que de verdad vas a usar.
     initial_prompt: str = "Conversación en español con el asistente Jarvis."
+    # Tope para transcribir una frase. Generoso: en un equipo lento con el
+    # modelo `medium` una frase larga puede pasar de diez segundos. Si se
+    # agota, J.A.R.V.I.S. lo dice y vuelve a estar listo, en vez de colgarse.
+    timeout_s: float = 45.0
 
 
 class VADSettings(BaseModel):
@@ -120,6 +124,10 @@ class AudioSettings(BaseModel):
     output_device: int | str | None = None
     # Permite interrumpir a J.A.R.V.I.S. hablándole encima.
     barge_in: bool = True
+    # Ningún estado debería durar minutos. Si uno se atasca, el vigilante lo
+    # devuelve a reposo: es preferible perder un turno a quedarse muerto sin
+    # que el usuario sepa por qué. 0 lo desactiva.
+    watchdog_s: float = 180.0
 
 
 class PermissionSettings(BaseModel):

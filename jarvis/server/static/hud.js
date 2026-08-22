@@ -253,12 +253,16 @@ el.formulario.addEventListener("submit", (ev) => {
 el.btnEscuchar.addEventListener("click", () => enviar({ type: "escuchar" }));
 el.btnInterrumpir.addEventListener("click", () => enviar({ type: "interrumpir" }));
 
-// Barra espaciadora para hablar, salvo mientras se escribe.
+// Barra espaciadora para hablar. Sólo cuando no hay nada enfocado: si el foco
+// está en un botón, el espacio ya lo pulsa, y disparábamos la escucha dos
+// veces —una de ellas cancelando el turno recién empezado—.
 document.addEventListener("keydown", (ev) => {
-  if (ev.code === "Space" && document.activeElement !== el.campo) {
-    ev.preventDefault();
-    enviar({ type: "escuchar" });
-  }
+  if (ev.code !== "Space" || ev.repeat) return;
+  const foco = document.activeElement;
+  if (foco && foco !== document.body) return;
+  if (el.btnEscuchar.disabled) return;
+  ev.preventDefault();
+  enviar({ type: "escuchar" });
 });
 
 /* ── Arranque ──────────────────────────────────────────────── */
