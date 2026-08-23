@@ -20,7 +20,9 @@ import argparse
 import asyncio
 import contextlib
 import sys
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 
 from . import instancia
 from .config import Settings, load_settings
@@ -370,11 +372,19 @@ async def _arrancar_todo(
         bandeja.detener()
         if escuchador is not None:
             escuchador.stop()
-        for t in (*tareas, *accesorias, espera):
+
+        todas = (*tareas, *accesorias, espera)
+        for t in todas:
             t.cancel()
-        for t in (*tareas, *accesorias, espera):
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await t
+        if todas:
+            # Con límite: cancelar no garantiza que la tarea obedezca a
+            # tiempo. Un WebSocket a medio cerrar puede dejar a uvicorn
+            # esperando su propia limpieza interna, y eso no puede convertir
+            # un Ctrl+C en un proceso que no vuelve a la terminal. Lo que
+            # quede pendiente lo remata `asyncio.run` al cerrar el loop.
+            with contextlib.suppress(Exception):
+                await asyncio.wait(todas, timeout=5.0)
+
         with contextlib.suppress(asyncio.TimeoutError, Exception):
             await asyncio.wait_for(core.stop(), timeout=10.0)
         hud.console.print("\n[dim]Sistemas fuera de línea.[/dim]")
@@ -426,10 +436,45 @@ def run(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    return _correr_hasta_el_final(_main_async(args, argv_crudo))
+
+
+def _correr_hasta_el_final(corutina: Coroutine[Any, Any, int]) -> int:
+    """Como `asyncio.run()`, pero con la limpieza final acotada.
+
+    `asyncio.run()` deja bien resuelto todo lo demás, salvo un detalle que
+    aquí importa: al terminar, cancela y espera **sin ningún límite** las
+    tareas que queden vivas en el loop. `_arrancar_todo` ya acota su propia
+    limpieza, pero eso no evita que una tarea huérfana y lenta en cerrar
+    —una conexión WebSocket a medio terminar es el caso real que motivó
+    esto— deje colgado justo este último paso, fuera ya de nuestro alcance:
+    el Ctrl+C nunca devolvería la terminal, que es exactamente el síntoma
+    reportado.
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        return asyncio.run(_main_async(args, argv_crudo))
-    except KeyboardInterrupt:
-        return 0
+        try:
+            return loop.run_until_complete(corutina)
+        except KeyboardInterrupt:
+            return 0
+    finally:
+        try:
+            _cerrar_el_loop(loop)
+        finally:
+            asyncio.set_event_loop(None)
+            loop.close()
+
+
+def _cerrar_el_loop(loop: asyncio.AbstractEventLoop) -> None:
+    pendientes = asyncio.all_tasks(loop)
+    for t in pendientes:
+        t.cancel()
+    if pendientes:
+        with contextlib.suppress(Exception):
+            loop.run_until_complete(asyncio.wait(pendientes, timeout=5.0))
+    with contextlib.suppress(Exception):
+        loop.run_until_complete(loop.shutdown_asyncgens())
 
 
 if __name__ == "__main__":

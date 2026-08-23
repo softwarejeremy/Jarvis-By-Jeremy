@@ -16,6 +16,8 @@ import argparse
 import asyncio
 import contextlib
 import socket
+import threading
+import time
 
 from jarvis import instancia, main
 from jarvis.audio.player import NullPlayer
@@ -217,3 +219,101 @@ class TestPropagacionDeErrores:
 
 async def _no_hacer_nada(*_a, **_k) -> bool:  # noqa: ANN002, ANN003
     return False
+
+
+class TestLimpiezaFinalAcotada:
+    """`asyncio.run()` hace bien casi todo, salvo un detalle que aquí
+    importa: al terminar, espera **sin límite** a que mueran las tareas que
+    queden vivas en el loop. `_arrancar_todo` acota su propia limpieza, pero
+    eso no protege de una tarea huérfana que se resista a morir del todo:
+    ese último paso queda fuera de su alcance, y ahí seguiría colgado el
+    Ctrl+C aunque el resto del arranque estuviera bien hecho.
+
+    `_correr_hasta_el_final` sustituye a `asyncio.run()` por eso mismo: para
+    poder acotar también la limpieza final. Se prueba con una tarea
+    deliberadamente inmortal —que nunca obedece a la cancelación— corriendo
+    en un hilo aparte con un `join` acotado, precisamente para que este test
+    no pueda colgarse ni siquiera si el arreglo estuviera mal hecho."""
+
+    def test_una_tarea_inmortal_no_impide_terminar(self):
+        async def coordinadora() -> int:
+            async def inmortal() -> None:
+                while True:
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await asyncio.sleep(1000)
+
+            asyncio.get_running_loop().create_task(inmortal(), name="inmortal")
+            return 0
+
+        resultado: dict[str, object] = {}
+
+        def objetivo() -> None:
+            resultado["valor"] = main._correr_hasta_el_final(coordinadora())
+
+        hilo = threading.Thread(target=objetivo, daemon=True)
+        t0 = time.monotonic()
+        hilo.start()
+        hilo.join(timeout=15.0)
+
+        if hilo.is_alive():
+            raise AssertionError(
+                "_correr_hasta_el_final no ha vuelto en 15 s: una tarea "
+                "inmortal cuelga la limpieza final, el mismo síntoma "
+                "reportado con Ctrl+C"
+            )
+        assert resultado.get("valor") == 0
+        assert time.monotonic() - t0 < 10.0, "ha tardado más de lo que permite el límite"
+
+
+class TestElCtrlCSiempreVuelve:
+    """Reportado en vivo: `Ctrl+C` dejaba la terminal colgada tras `--web
+    --https`. La causa era cancelar las tareas y esperarlas sin límite de
+    tiempo: si una tarda en obedecer a la cancelación —un WebSocket a medio
+    cerrar es de lo más plausible bajo el bucle Proactor de Windows con
+    TLS—, el `await` esperaba lo que hiciera falta y el proceso no volvía.
+
+    El servidor de mentira tarda, pero **termina**: uno que ignorase la
+    cancelación para siempre colgaría también la propia limpieza final de
+    `asyncio.run()` —fuera ya del alcance de este bloque—, y eso se cubre
+    aparte en `TestLimpiezaFinalAcotada`."""
+
+    async def test_una_tarea_lenta_en_cerrar_no_bloquea_la_salida(self, settings, monkeypatch):
+        _construir, _montado = _construir_con_dobles()
+        monkeypatch.setattr(main, "load_settings", lambda *_a, **_k: settings)
+        monkeypatch.setattr(main, "_construir", _construir)
+
+        async def servidor_lento_al_cerrar(*_a, **_k):  # noqa: ANN002, ANN003
+            try:
+                await asyncio.sleep(1000)
+            except asyncio.CancelledError:
+                # Más lento que el límite de la limpieza (5 s), pero acaba
+                # cerrando: es el caso real, no uno inmortal.
+                await asyncio.sleep(8.0)
+                raise
+
+        monkeypatch.setattr("jarvis.server.app.servir", servidor_lento_al_cerrar)
+        monkeypatch.setattr("jarvis.server.app.ip_local", lambda: None)
+        monkeypatch.setattr("jarvis.ui.navegador.abrir_cuando_escuche", _no_hacer_nada)
+
+        tarea = asyncio.create_task(
+            main._main_async(
+                _args(web=True, puerto=_puerto_libre(), sin_navegador=True), []
+            )
+        )
+        await asyncio.sleep(0.2)
+        inicio = asyncio.get_running_loop().time()
+
+        # El equivalente al Ctrl+C: se pide que termine sin más avisos.
+        tarea.cancel()
+
+        try:
+            resultado = await asyncio.wait_for(tarea, timeout=7.0)
+        except asyncio.CancelledError:
+            resultado = None  # también es una salida válida
+
+        transcurrido = asyncio.get_running_loop().time() - inicio
+        assert transcurrido < 7.0, (
+            f"tardó {transcurrido:.1f}s: el límite de 5 s en la limpieza no se respetó"
+        )
+        if resultado is not None:
+            assert resultado == 0
