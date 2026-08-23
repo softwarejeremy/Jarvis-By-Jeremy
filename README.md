@@ -75,7 +75,7 @@ cd Cositas-Skypie
 python -m venv .venv
 .venv\Scripts\activate
 
-pip install -e ".[voice,windows,web]"
+pip install -e ".[voice,windows,web,bandeja]"
 ```
 
 La primera vez se descargarán el modelo de transcripción (~500 MB para `small`) y el
@@ -122,10 +122,13 @@ python -m jarvis --texto          # escribes tú, él contesta con voz
 python -m jarvis --demo           # sin clave ni gasto: respuestas simuladas
 python -m jarvis --muda           # sin audio de salida, sólo texto
 python -m jarvis --sim audio.wav  # inyecta un WAV en vez del micrófono
-python -m jarvis --web            # además, el HUD en el navegador
+python -m jarvis --web            # además, el HUD en el navegador (se abre solo)
 python -m jarvis --web --https    # y poder hablarle desde el móvil
 python -m jarvis --diag           # diagnóstico
 ```
+
+Otras banderas útiles: `--sin-navegador` (con `--web`, no abrir la pestaña solo) y
+`--sin-bandeja` (no poner el icono en la bandeja del sistema).
 
 **Empieza por `--demo --texto`.** Funciona sin clave y sin gastar nada, y te deja ver
 el flujo completo antes de configurar la API.
@@ -138,9 +141,10 @@ el flujo completo antes de configurar la API.
 python -m jarvis --web
 ```
 
-Abre `http://localhost:8765`. Verás el reactor cambiando de color según lo que
-esté haciendo, la conversación apareciendo palabra a palabra, las herramientas que
-usa y el gasto acumulado.
+Se abre solo en `http://localhost:8765` en cuanto el servidor está listo (si prefieres
+que no, añade `--sin-navegador`). Verás el reactor cambiando de color según lo que esté
+haciendo, la conversación apareciendo palabra a palabra, las herramientas que usa y el
+gasto acumulado.
 
 Es el **mismo núcleo**: lo que digas por voz sale en la pantalla, y lo que escribas
 en la pantalla lo contesta por voz. No son dos programas.
@@ -181,6 +185,14 @@ incluirla.
 Si no hay micrófono por ningún lado, el botón aparece desactivado explicando por qué,
 y siempre queda la entrada por texto. Con `--web --texto` el teclado del navegador es
 la única entrada, sin tocar ningún micrófono.
+
+### Pausar el micrófono
+
+El botón **Pausar micrófono** (también disponible desde la bandeja del sistema, ver
+más abajo) hace que J.A.R.V.I.S. deje de atender al «Hey Jarvis» sin cerrar el
+programa: útil si tienes visita y no quieres que te escuche. En pausa, ni el atajo de
+teclado ni el botón de escuchar hacen nada —avisan de que está en pausa en vez de
+callarse sin más—, y sigue así hasta que le des a **Reanudar micrófono**.
 
 ---
 
@@ -263,6 +275,25 @@ romper nada.
 
 ---
 
+## El icono de la bandeja
+
+Sin ventana de consola, la cara de J.A.R.V.I.S. es un pequeño reactor en el área de
+notificación (junto al reloj), que cambia de color con el estado — el mismo color que
+el HUD del navegador. Al arrancar suelta un aviso ("J.A.R.V.I.S. en línea") con la URL
+del HUD, y el clic derecho abre un menú con:
+
+- **Abrir el HUD** (sólo si arrancó con `--web`)
+- **Escuchar ahora** / **Silenciar**
+- **Micrófono en pausa** — el mismo interruptor que el botón del HUD
+- **Arrancar con Windows** — instala o quita el arranque automático sin tocar la terminal
+- **Salir**
+
+Si por lo que sea no aparece (falta el extra `bandeja`, o el sistema no tiene bandeja de
+notificación), J.A.R.V.I.S. sigue funcionando igual: se pierde el icono, no el asistente.
+Se puede desactivar a propósito con `--sin-bandeja`.
+
+---
+
 ## Arrancar solo con Windows
 
 ```powershell
@@ -273,17 +304,25 @@ Deja un pequeño script en tu carpeta de Inicio (`shell:startup`) que lanza
 J.A.R.V.I.S. al iniciar sesión, **sin ventana de consola** — usa `pythonw.exe`,
 que no la abre, y lo lanza en modo oculto. Las banderas que pongas después de
 `--arrancar-con-windows` son las que arrancarán cada mañana: si aquí pones
-`--web --https`, eso es lo que se inicia solo.
+`--web --https`, eso es lo que se inicia solo. El icono de la bandeja se
+encarga de avisar de que está vivo; por eso, al guardar la orden para cada
+mañana se añade `--sin-navegador` en automático — abrir una pestaña sola cada
+inicio de sesión sería intrusivo.
 
 No toca el registro ni el Programador de tareas — es sólo un archivo en tu
 carpeta de usuario, sin permisos de administrador, y se desactiva borrándolo a
-mano o con:
+mano, desde el menú del icono de la bandeja, o con:
 
 ```powershell
 python -m jarvis --quitar-del-inicio
 ```
 
 Bórralo desde `shell:startup` si prefieres hacerlo sin la terminal.
+
+**Si ya había uno arrancado** (por ejemplo, el que puso en marcha el sistema) y lo
+vuelves a lanzar a mano, J.A.R.V.I.S. lo detecta, te abre el HUD del que ya está
+vivo y se cierra él solo — no compiten dos instancias por el micrófono ni por el
+puerto del HUD.
 
 ---
 
@@ -308,9 +347,15 @@ jarvis/
 │   ├── player.py     Reproducción interrumpible
 │   └── tts/          edge · sapi · elevenlabs
 ├── hotkey.py         Push-to-talk global
+├── instancia.py      Un solo J.A.R.V.I.S. por equipo (cerrojo por socket)
+├── inicio.py         Arranque automático con Windows
 ├── tools/            Memoria y control del equipo, expuestos a Claude vía MCP
 ├── server/           HUD web: FastAPI + WebSocket, micrófono del navegador y TLS
-└── ui/console.py     HUD de terminal
+└── ui/
+    ├── console.py    HUD de terminal
+    ├── bandeja.py    Icono en el área de notificación
+    ├── icono.py      El reactor en miniatura, dibujado por código
+    └── navegador.py  Abre el HUD cuando el servidor ya escucha
 ```
 
 **El principio de diseño:** el núcleo no sabe si lo está mirando una terminal, un
@@ -333,8 +378,8 @@ que tocar.
 ## Desarrollo
 
 ```bash
-pip install -e ".[voice,dev,web]"
-pytest              # 210 tests, sin necesidad de micrófono
+pip install -e ".[voice,dev,web,bandeja]"
+pytest              # 313 tests, sin necesidad de micrófono
 ruff check jarvis tests
 ```
 
@@ -406,6 +451,7 @@ Implementado y probado:
 - [x] Herramientas de sistema: volumen, abrir programas, bloquear
 - [x] Integración continua
 - [x] Arranque automático con Windows
+- [x] Icono en la bandeja del sistema, pausa del micrófono e instancia única
 
 Pendiente:
 

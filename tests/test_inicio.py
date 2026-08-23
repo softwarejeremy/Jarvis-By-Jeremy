@@ -54,6 +54,18 @@ class TestGuionVbs:
         assert "--web" in guion
         assert '""--web""' not in guion
 
+    def test_espera_a_que_el_escritorio_este_listo(self):
+        # El icono de la bandeja se registra con Shell_NotifyIcon: si
+        # explorer.exe aún no ha montado el área de notificación al iniciar
+        # sesión, esa llamada falla y no hay icono.
+        guion = inicio.guion_vbs(Path("py.exe"), Path("."), ["-m", "jarvis"])
+        assert "WScript.Sleep" in guion
+        assert str(inicio.ESPERA_ESCRITORIO_MS) in guion
+
+    def test_la_espera_va_antes_de_lanzar(self):
+        guion = inicio.guion_vbs(Path("py.exe"), Path("."), ["-m", "jarvis"])
+        assert guion.index("WScript.Sleep") < guion.index("sh.Run")
+
 
 class TestInstalarYDesinstalar:
     def test_instala_y_deja_constancia(self, tmp_path):
@@ -93,6 +105,51 @@ class TestInstalarYDesinstalar:
         destino = tmp_path / "no" / "existe"
         inicio.instalar(destino=destino)
         assert (destino / inicio.NOMBRE_ARCHIVO).is_file()
+
+
+class TestOrdenParaElInicio:
+    """Lo que se guardará en el .vbs, a partir de cómo se arrancó hoy."""
+
+    def test_conserva_las_banderas_del_usuario(self):
+        orden = inicio.orden_para_el_inicio(["--web", "--https"])
+        assert "--web" in orden
+        assert "--https" in orden
+
+    def test_anade_sin_navegador_si_hay_web_y_falta(self):
+        orden = inicio.orden_para_el_inicio(["--web"])
+        assert "--sin-navegador" in orden
+
+    def test_no_lo_duplica_si_ya_estaba(self):
+        orden = inicio.orden_para_el_inicio(["--web", "--sin-navegador"])
+        assert orden.count("--sin-navegador") == 1
+
+    def test_sin_web_no_anade_sin_navegador(self):
+        # No tiene sentido la bandera si no hay HUD que abrir.
+        orden = inicio.orden_para_el_inicio(["--texto"])
+        assert "--sin-navegador" not in orden
+
+    def test_quita_las_banderas_de_instalacion(self):
+        orden = inicio.orden_para_el_inicio(
+            ["--web", "--arrancar-con-windows", "--sin-bandeja"]
+        )
+        assert "--arrancar-con-windows" not in orden
+        assert "--sin-bandeja" not in orden
+
+    def test_sin_nada_usa_los_argumentos_por_defecto(self):
+        assert inicio.orden_para_el_inicio([]) == inicio.ARGUMENTOS_POR_DEFECTO
+
+    def test_solo_banderas_de_instalacion_tambien_usa_el_defecto(self):
+        orden = inicio.orden_para_el_inicio(["--arrancar-con-windows"])
+        assert orden == inicio.ARGUMENTOS_POR_DEFECTO
+
+    def test_el_resultado_empieza_por_el_modulo(self):
+        orden = inicio.orden_para_el_inicio(["--texto"])
+        assert orden[:2] == ["-m", "jarvis"]
+
+    def test_los_argumentos_por_defecto_no_abren_el_navegador(self):
+        # Arrancando con el sistema, la cara de cada mañana es el icono de la
+        # bandeja y su globo, no una pestaña que hay que cerrar.
+        assert "--sin-navegador" in inicio.ARGUMENTOS_POR_DEFECTO
 
 
 class TestInterpreteSinConsola:

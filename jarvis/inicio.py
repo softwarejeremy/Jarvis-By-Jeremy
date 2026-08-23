@@ -13,6 +13,12 @@ lanza de verdad en silencio.
 También se usa `pythonw.exe` en lugar de `python.exe`: el primero no abre
 consola. Sin ninguna de las dos cosas, encender el ordenador significaría ver
 una ventana negra abrirse sola todos los días.
+
+Sin consola, la única cara del asistente es el icono de la bandeja del
+sistema (`jarvis.ui.bandeja`): por eso el guión espera unos segundos antes de
+lanzar —para que `explorer.exe` tenga montada el área de notificación— y por
+eso `ARGUMENTOS_POR_DEFECTO` fuerza `--sin-navegador`: abrir una pestaña sola
+cada mañana sería intrusivo, y el icono y su globo ya avisan de que está vivo.
 """
 
 from __future__ import annotations
@@ -60,7 +66,18 @@ def _interprete_sin_consola() -> Path:
     return sin_consola if sin_consola.is_file() else actual
 
 
-def guion_vbs(interprete: Path, proyecto: Path, argumentos: list[str]) -> str:
+# Antes de lanzar, el .vbs espera a que el escritorio esté de verdad listo.
+# Dos motivos, los dos reales: el icono de la bandeja se registra con
+# Shell_NotifyIcon, y si `explorer.exe` no ha terminado de montar el área de
+# notificación esa llamada falla y no hay icono; y la tarjeta de sonido
+# tampoco está siempre lista al primer instante de la sesión, lo que dejaría
+# el MicStream arrancando sin dispositivo.
+ESPERA_ESCRITORIO_MS = 8000
+
+
+def guion_vbs(
+    interprete: Path, proyecto: Path, argumentos: list[str], espera_ms: int = ESPERA_ESCRITORIO_MS
+) -> str:
     """El VBScript que lanza J.A.R.V.I.S. sin ventana."""
     partes = " ".join(f'""{a}""' if " " in a else a for a in argumentos)
     return (
@@ -68,6 +85,8 @@ def guion_vbs(interprete: Path, proyecto: Path, argumentos: list[str]) -> str:
         "' automático, o ejecuta: python -m jarvis --quitar-del-inicio\n"
         'Set sh = CreateObject("WScript.Shell")\n'
         f'sh.CurrentDirectory = "{proyecto}"\n'
+        # Le da tiempo a explorer.exe y a la tarjeta de sonido antes de lanzar.
+        f"WScript.Sleep {espera_ms}\n"
         # El 0 final es el modo de ventana: oculta. El False significa que no
         # espera a que termine, o el inicio de sesión se quedaría colgado.
         f'sh.Run """{interprete}"" {partes}", 0, False\n'
