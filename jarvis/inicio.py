@@ -25,8 +25,16 @@ from pathlib import Path
 NOMBRE_ARCHIVO = "jarvis.vbs"
 
 # Lo que se ejecuta al iniciar sesión. Se arranca con el HUD para que haya
-# alguna forma de ver qué hace: sin consola visible, es la única.
-ARGUMENTOS_POR_DEFECTO = ["-m", "jarvis", "--web"]
+# alguna forma de ver qué hace, pero SIN abrir el navegador: la cara de cada
+# mañana es el icono de la bandeja y su globo, no una pestaña que hay que
+# cerrar. La URL sigue disponible en el globo y en el propio icono.
+ARGUMENTOS_POR_DEFECTO = ["-m", "jarvis", "--web", "--sin-navegador"]
+
+# Banderas que sólo tienen sentido en la línea de órdenes de instalación, no
+# en lo que se guarda para el arranque automático.
+_BANDERAS_DE_INSTALACION = frozenset(
+    {"--arrancar-con-windows", "--quitar-del-inicio", "--sin-bandeja"}
+)
 
 
 def carpeta_inicio() -> Path | None:
@@ -64,6 +72,24 @@ def guion_vbs(interprete: Path, proyecto: Path, argumentos: list[str]) -> str:
         # espera a que termine, o el inicio de sesión se quedaría colgado.
         f'sh.Run """{interprete}"" {partes}", 0, False\n'
     )
+
+
+def orden_para_el_inicio(extras: list[str]) -> list[str]:
+    """La orden que se guardará en el `.vbs`, a partir de cómo se arrancó hoy.
+
+    Se conservan las banderas del usuario —quien instala con `--web --https`
+    quiere eso cada mañana— pero se fuerza `--sin-navegador`: abrir una pestaña
+    sola en cada inicio de sesión es intrusivo, y el icono de la bandeja ya
+    avisa de que está en marcha.
+    """
+    filtradas = [a for a in extras if a not in _BANDERAS_DE_INSTALACION]
+
+    if "--web" in filtradas and "--sin-navegador" not in filtradas:
+        filtradas.append("--sin-navegador")
+
+    if not filtradas:
+        return ARGUMENTOS_POR_DEFECTO
+    return ["-m", "jarvis", *filtradas]
 
 
 def instalar(argumentos: list[str] | None = None, destino: Path | None = None) -> str:

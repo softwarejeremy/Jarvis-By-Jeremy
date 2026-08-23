@@ -22,12 +22,14 @@ import contextlib
 import sys
 from pathlib import Path
 
+from . import instancia
 from .config import Settings, load_settings
 from .core.agent import Agent, DemoAgent
 from .core.core import JarvisCore
 from .core.memory import Memory
 from .core.permissions import PermissionGuard
 from .events import EventBus
+from .ui.bandeja import Bandeja, NullBandeja, crear_bandeja
 from .ui.console import ConsoleHUD
 
 
@@ -43,6 +45,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--https",
         action="store_true",
         help="servir el HUD con TLS: hace falta para usar el micrófono desde el móvil",
+    )
+    p.add_argument(
+        "--sin-navegador",
+        action="store_true",
+        help="con --web, no abrir el navegador solo al arrancar",
+    )
+    p.add_argument(
+        "--sin-bandeja",
+        action="store_true",
+        help="no poner el icono en la bandeja del sistema",
     )
     p.add_argument("--diag", action="store_true", help="diagnosticar el equipo y salir")
     p.add_argument(
@@ -157,11 +169,63 @@ def _leer_wav(ruta: Path):  # noqa: ANN202
     return np.frombuffer(crudo, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-async def _main_async(args: argparse.Namespace) -> int:
+async def _main_async(args: argparse.Namespace, argv_crudo: list[str]) -> int:
     s = load_settings(Path(args.config) if args.config else None)
     bus = EventBus()
     hud = ConsoleHUD(bus, verbose=args.verbose)
 
+    # Con el arranque automático, esto deja de ser hipotético: uno lo lanza el
+    # sistema al iniciar sesión y otro lo lanza el usuario a mano. Se comprueba
+    # antes de cargar los modelos (segundos y medio giga) y sin importar el
+    # modo: dos instancias compiten por el micrófono y el atajo global aunque
+    # ninguna lleve --web.
+    reserva = instancia.reservar(s.data_dir)
+    if reserva is None:
+        return await _avisar_de_la_otra_instancia(s, hud, args)
+
+    try:
+        return await _arrancar_todo(args, argv_crudo, s, bus, hud, reserva)
+    finally:
+        reserva.liberar()
+
+
+async def _avisar_de_la_otra_instancia(
+    s: Settings, hud: ConsoleHUD, args: argparse.Namespace
+) -> int:
+    """Ya hay un J.A.R.V.I.S. vivo. Se le señala al usuario y se sale.
+
+    Código 0, no 1: para quien hizo doble clic dos veces, el objetivo —que
+    J.A.R.V.I.S. esté funcionando— está cumplido. Un código de error haría que
+    cualquier lanzador (el propio `.vbs`) lo tratara como un fallo.
+    """
+    huella = instancia.huella_ajena(s.data_dir)
+    hud.console.print("[yellow]Ya hay un J.A.R.V.I.S. funcionando en este equipo.[/yellow]")
+
+    if huella and huella.url:
+        hud.console.print(f"  [cyan]Su HUD está en {huella.url}[/cyan]")
+        # El mensaje por consola puede ir a un NULL_FILE si esto se lanzó sin
+        # terminal (pythonw): abrir el navegador es el canal que de verdad
+        # informa en ese caso.
+        if not args.sin_navegador:
+            from .ui.navegador import abrir
+
+            await asyncio.to_thread(abrir, huella.url)
+    else:
+        hud.console.print(
+            "  [dim]No sé cuál es su HUD; probablemente arrancó sin --web.[/dim]"
+        )
+
+    return 0
+
+
+async def _arrancar_todo(
+    args: argparse.Namespace,
+    argv_crudo: list[str],
+    s: Settings,
+    bus: EventBus,
+    hud: ConsoleHUD,
+    reserva: instancia.Reserva,
+) -> int:
     core = _construir(args, s, bus)
 
     hud.bienvenida(
@@ -187,20 +251,30 @@ async def _main_async(args: argparse.Namespace) -> int:
 
     await core.start()
 
-    tareas = [asyncio.create_task(core.run())]
+    audio = asyncio.create_task(core.run(), name="audio")
+    # En modo texto el "micrófono" es un `FakeMicStream` sin audio: su bucle
+    # termina casi al instante, y eso no es una señal de apagado, es que no
+    # hay nada que procesar. Tratarlo como principal cortaría la conversación
+    # antes de que Claude respondiera. La vida real de este modo la marca
+    # `_bucle_texto` (o el servidor web, si lo hay).
+    tareas: list[asyncio.Task] = [] if args.texto else [audio]
+    accesorias: list[asyncio.Task] = [audio] if args.texto else []
     escuchador = None
+    url_local: str | None = None
 
     if args.web:
         from .server.app import ip_local, servir
 
         tareas.append(
-            asyncio.create_task(servir(core, puerto=args.puerto, https=args.https))
+            asyncio.create_task(
+                servir(core, puerto=args.puerto, https=args.https), name="servidor"
+            )
         )
 
         esquema = "https" if args.https else "http"
-        hud.console.print(
-            f"  [bold cyan]HUD aquí:[/bold cyan]      {esquema}://localhost:{args.puerto}"
-        )
+        url_local = f"{esquema}://localhost:{args.puerto}"
+        hud.console.print(f"  [bold cyan]HUD aquí:[/bold cyan]      {url_local}")
+
         # La IP se calcula sola: pedirle al usuario que interprete `ipconfig`
         # es trasladarle un trabajo que la máquina hace mejor.
         ip = ip_local()
@@ -222,10 +296,24 @@ async def _main_async(args: argparse.Namespace) -> int:
             )
         hud.console.print()
 
+        if not args.sin_navegador:
+            from .ui.navegador import abrir_cuando_escuche
+
+            # Tarea aparte y fuera de `tareas`: tiene que correr en paralelo
+            # con `servir()`, que no vuelve nunca, y no puede ser motivo para
+            # terminar el programa en cuanto el navegador se abre.
+            accesorias.append(
+                asyncio.create_task(
+                    abrir_cuando_escuche(url_local, args.puerto), name="navegador"
+                )
+            )
+
+    reserva.anunciar(url_local)
+
     # Con el HUD abierto, la entrada de texto va por el navegador: dos bucles
     # leyendo a la vez se pisarían.
     if args.texto and not args.web:
-        tareas.append(asyncio.create_task(_bucle_texto(core, hud)))
+        tareas.append(asyncio.create_task(_bucle_texto(core, hud), name="texto"))
     elif s.hotkey.enabled and not args.texto:
         from .hotkey import HotkeyListener
 
@@ -240,19 +328,65 @@ async def _main_async(args: argparse.Namespace) -> int:
                 f"{escuchador.error}[/yellow]"
             )
 
+    parada = asyncio.Event()
+    bandeja: Bandeja | NullBandeja = (
+        NullBandeja()
+        if args.sin_bandeja
+        else crear_bandeja(
+            core,
+            url=url_local,
+            salir=parada.set,
+            argumentos_inicio=_inicio_orden(argv_crudo),
+        )
+    )
+    bandeja.arrancar()
+    if bandeja.activa:
+        saludo = f"J.A.R.V.I.S. en línea.\n{url_local}" if url_local else "J.A.R.V.I.S. en línea."
+        bandeja.notificar(saludo)
+    elif not args.sin_bandeja:
+        hud.console.print(f"[yellow]Sin icono en la bandeja: {bandeja.error}[/yellow]")
+
+    espera = asyncio.create_task(parada.wait(), name="parada")
+
     try:
-        await asyncio.gather(*tareas)
+        hechas, pendientes = await asyncio.wait(
+            {*tareas, espera}, return_when=asyncio.FIRST_COMPLETED
+        )
+        # `asyncio.wait` no propaga las excepciones: sin este repaso, un fallo
+        # en el servidor (puerto ocupado, certificado ilegible) desaparecería
+        # sin dejar rastro, que es justo el problema que este módulo vino a
+        # arreglar.
+        for t in hechas:
+            if t is espera or t.cancelled():
+                continue
+            exc = t.exception()
+            if exc is not None:
+                hud.console.print(f"[bold red]✖ {exc}[/bold red]")
+                bandeja.notificar(f"Se ha detenido: {exc}")
+        del pendientes
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
+        bandeja.detener()
         if escuchador is not None:
             escuchador.stop()
-        for t in tareas:
+        for t in (*tareas, *accesorias, espera):
             t.cancel()
-        await core.stop()
+        for t in (*tareas, *accesorias, espera):
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await t
+        with contextlib.suppress(asyncio.TimeoutError, Exception):
+            await asyncio.wait_for(core.stop(), timeout=10.0)
         hud.console.print("\n[dim]Sistemas fuera de línea.[/dim]")
 
     return 0
+
+
+def _inicio_orden(argv_crudo: list[str]) -> list[str]:
+    """La orden que se guardará si se activa el arranque automático hoy."""
+    from . import inicio
+
+    return inicio.orden_para_el_inicio(argv_crudo)
 
 
 async def _bucle_texto(core: JarvisCore, hud: ConsoleHUD) -> None:
@@ -268,6 +402,7 @@ async def _bucle_texto(core: JarvisCore, hud: ConsoleHUD) -> None:
 
 def run(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    argv_crudo = argv if argv is not None else sys.argv[1:]
 
     if args.diag:
         from .diag import ejecutar_diagnostico
@@ -282,9 +417,9 @@ def run(argv: list[str] | None = None) -> int:
         # Se conservan las banderas del arranque para que J.A.R.V.I.S. se
         # inicie tal como lo pidió el usuario: si instala con `--web --https`,
         # eso es lo que debe levantarse cada mañana.
-        extras = [a for a in (argv if argv is not None else sys.argv[1:])
+        extras = [a for a in argv_crudo
                   if a not in ("--arrancar-con-windows", "--quitar-del-inicio")]
-        orden = ["-m", "jarvis", *extras] if extras else inicio.ARGUMENTOS_POR_DEFECTO
+        orden = inicio.orden_para_el_inicio(extras)
 
         Console().print(
             inicio.desinstalar() if args.quitar_del_inicio else inicio.instalar(orden)
@@ -292,7 +427,7 @@ def run(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        return asyncio.run(_main_async(args))
+        return asyncio.run(_main_async(args, argv_crudo))
     except KeyboardInterrupt:
         return 0
 
