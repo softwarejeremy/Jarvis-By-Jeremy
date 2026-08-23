@@ -18,6 +18,8 @@ const el = {
   campo: $("campo"),
   btnEscuchar: $("btn-escuchar"),
   btnInterrumpir: $("btn-interrumpir"),
+  btnPausa: $("btn-pausa"),
+  btnPausaTexto: $("btn-pausa-texto"),
   conexion: $("conexion"),
   conexionTexto: $("conexion-texto"),
   subtitulo: $("subtitulo"),
@@ -37,6 +39,7 @@ const PISTAS = {
   pensando: "Pensando…",
   hablando: "Hablando. Puede interrumpirle.",
   confirmando: "Espera su confirmación: diga «sí» o «no»",
+  pausado: "Micrófono en pausa. No le está escuchando.",
   error: "Algo ha fallado. Revise la actividad.",
 };
 
@@ -158,7 +161,18 @@ function pintarEstado(estado) {
   el.btnInterrumpir.disabled = !ocupado;
   // Durante una confirmación hablada la respuesta tiene que ir por voz, así
   // que no se ofrece reiniciar la escucha desde el navegador.
-  el.btnEscuchar.disabled = !hayMicrofono || estado === "confirmando";
+  el.btnEscuchar.disabled =
+    !hayMicrofono || estado === "confirmando" || estado === "pausado";
+
+  if (estado === "pausado" || estado === "dormido") pintarPausa(estado === "pausado");
+}
+
+// El botón dice lo que va a hacer, no en qué estado está: «Pausar micrófono»
+// mientras escucha y «Reanudar» mientras no.
+function pintarPausa(pausado) {
+  el.btnPausa.setAttribute("aria-pressed", String(pausado));
+  el.btnPausa.classList.toggle("activo", pausado);
+  el.btnPausaTexto.textContent = pausado ? "Reanudar micrófono" : "Pausar micrófono";
 }
 
 function anadirTurno(quien, texto) {
@@ -447,6 +461,7 @@ if (usaMicrofonoDelNavegador()) {
 }
 
 el.btnInterrumpir.addEventListener("click", () => enviar({ type: "interrumpir" }));
+el.btnPausa.addEventListener("click", () => enviar({ type: "pausa" }));
 
 // Barra espaciadora para hablar. Sólo cuando no hay nada enfocado: si el foco
 // está en un botón, el espacio ya lo pulsa, y disparábamos la escucha dos
@@ -488,6 +503,7 @@ fetch("/api/estado")
         : "Pulsa el botón para hablar";
     }
 
+    pintarPausa(Boolean(s.pausado));
     pintarEstado(s.state);
   })
   .catch(() => {});

@@ -84,6 +84,7 @@ def crear_app(core: JarvisCore) -> FastAPI:
             # Sin micrófono real, ofrecer el botón de escuchar dejaría al
             # núcleo esperando un audio que nunca va a llegar.
             "microfono": getattr(core.mic, "es_real", False),
+            "pausado": core.pausado,
             "usuario": core.s.agent.user_name,
         }
 
@@ -196,6 +197,11 @@ async def _atender(core: JarvisCore, mensaje: dict[str, Any]) -> None:
 
     elif tipo == "interrumpir":
         core.player.interrumpir()
+
+    elif tipo == "pausa":
+        # El mismo mando que la bandeja del sistema. Los dos frentes tienen que
+        # poder lo mismo, o el HUD se convierte en una interfaz de segunda.
+        core.alternar_pausa()
 
 
 async def servir(

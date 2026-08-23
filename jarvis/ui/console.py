@@ -20,6 +20,7 @@ _COLOR_ESTADO = {
     State.PENSANDO.value: "yellow",
     State.HABLANDO.value: "bright_green",
     State.CONFIRMANDO.value: "bright_magenta",
+    State.PAUSADO.value: "grey42",
     State.ERROR.value: "bright_red",
 }
 
@@ -30,6 +31,7 @@ _ICONO_ESTADO = {
     State.PENSANDO.value: "◐",
     State.HABLANDO.value: "◆",
     State.CONFIRMANDO.value: "⚠",
+    State.PAUSADO.value: "⏸",
     State.ERROR.value: "✖",
 }
 

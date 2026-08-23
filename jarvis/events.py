@@ -27,6 +27,7 @@ class State(str, Enum):
     PENSANDO = "pensando"        # Claude está trabajando
     HABLANDO = "hablando"
     CONFIRMANDO = "confirmando"  # esperando tu "sí" para algo delicado
+    PAUSADO = "pausado"          # sordo a propósito: ni siquiera la wake word
     ERROR = "error"
 
 

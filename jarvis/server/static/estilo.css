@@ -344,6 +344,21 @@ body {
 .boton-secundario { border-color: rgba(251, 113, 133, 0.4); color: var(--rojo); background: rgba(251, 113, 133, 0.07); }
 .boton-secundario:hover:not(:disabled) { background: rgba(251, 113, 133, 0.18); border-color: var(--rojo); }
 
+/* La pausa no es una alarma: heredar el rojo de "Silenciar" la haría parecer
+   un botón de emergencia. Neutro apagado, y bien encendido mientras actúa. */
+#btn-pausa {
+  border-color: rgba(100, 116, 139, 0.45);
+  color: #94a3b8;
+  background: rgba(100, 116, 139, 0.08);
+}
+#btn-pausa:hover:not(:disabled) { background: rgba(100, 116, 139, 0.2); border-color: #94a3b8; }
+#btn-pausa.activo {
+  border-color: var(--ambar);
+  color: var(--ambar);
+  background: rgba(251, 191, 36, 0.14);
+}
+#btn-pausa.activo:hover { background: rgba(251, 191, 36, 0.24); }
+
 /* ── Conversación ──────────────────────────────────────────── */
 .conversacion {
   flex: 1;

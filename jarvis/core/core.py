@@ -93,6 +93,12 @@ class JarvisCore:
         self._estado_desde = time.monotonic()
         self._parar = asyncio.Event()
 
+        # La pausa es un *deseo del usuario*, no un estado de la máquina. Si
+        # fuera sólo el estado PAUSADO, cualquier turno lanzado desde el HUD
+        # web acabaría en `_set_state(DORMIDO)` y le reabriría el micrófono a
+        # quien había pedido expresamente que no le escucharan.
+        self._pausado = False
+
     # ── estado ──────────────────────────────────────────────────────────
     def _set_state(self, nuevo: State) -> None:
         if nuevo is self.state:
@@ -100,6 +106,10 @@ class JarvisCore:
         anterior, self.state = self.state, nuevo
         self._estado_desde = time.monotonic()
         self.bus.emit(EventType.STATE_CHANGED, state=nuevo.value, previous=anterior.value)
+
+    def _a_reposo(self) -> None:
+        """Vuelve a la espera. Con el micrófono en pausa, la espera es sorda."""
+        self._set_state(State.PAUSADO if self._pausado else State.DORMIDO)
 
     # ── arranque y parada ───────────────────────────────────────────────
     async def start(self) -> None:
@@ -152,13 +162,14 @@ class JarvisCore:
         indistinguible de uno roto: recuperarse y avisar siempre es mejor que
         esperar en silencio a que el usuario cierre la ventana.
 
-        El estado de reposo se salta a propósito: puede durar días.
+        El reposo y la pausa se saltan a propósito: pueden durar días, y
+        "recuperar" una pausa sería desobedecer a quien la pidió.
         """
         limite = self.s.audio.watchdog_s
         while not self._parar.is_set():
             await asyncio.sleep(min(5.0, limite / 4))
 
-            if self.state is State.DORMIDO:
+            if self.state in (State.DORMIDO, State.PAUSADO):
                 continue
             if time.monotonic() - self._estado_desde < limite:
                 continue
@@ -185,7 +196,7 @@ class JarvisCore:
         self._captura = None
         self._grabacion = []
         self._endpointer.reset()
-        self._set_state(State.DORMIDO)
+        self._a_reposo()
 
     # ── el bucle de audio ───────────────────────────────────────────────
     def _procesar_frame(self, frame: np.ndarray) -> None:
@@ -273,7 +284,7 @@ class JarvisCore:
             raise
         except Exception as exc:  # noqa: BLE001
             self.bus.emit(EventType.ERROR, message=str(exc))
-            self._set_state(State.DORMIDO)
+            self._a_reposo()
 
     async def _entender_y_responder(self, audio: np.ndarray) -> None:
         """Transcribe un audio ya grabado y contesta.
@@ -287,7 +298,7 @@ class JarvisCore:
 
         if not texto:
             await self._decir_ahora(random.choice(NO_ENTENDI))
-            self._set_state(State.DORMIDO)
+            self._a_reposo()
             return
 
         self.bus.emit(EventType.FINAL_TRANSCRIPT, text=texto)
@@ -312,7 +323,7 @@ class JarvisCore:
             raise
         except Exception as exc:  # noqa: BLE001
             self.bus.emit(EventType.ERROR, message=str(exc))
-            self._set_state(State.DORMIDO)
+            self._a_reposo()
 
     async def _transcribir(self, audio: np.ndarray) -> str:
         """Transcribe con tope de tiempo.
@@ -387,7 +398,7 @@ class JarvisCore:
 
         self.bus.emit(EventType.ASSISTANT_DONE, text="".join(completo))
         await self._esperar_silencio()
-        self._set_state(State.DORMIDO)
+        self._a_reposo()
 
     # ── voz ─────────────────────────────────────────────────────────────
     async def _encolar_voz(self, texto: str) -> None:
@@ -446,10 +457,53 @@ class JarvisCore:
 
     async def escuchar_ahora(self) -> None:
         """Punto de entrada del push-to-talk y del botón de la interfaz web."""
+        if self._pausado:
+            # No obedecer en silencio sería el peor de los dos males: quien
+            # pulsa el atajo espera que le escuche, y un fallo mudo es
+            # indistinguible de estar roto.
+            self.bus.emit(
+                EventType.LOG,
+                message="Tengo el micrófono en pausa. Reactívelo para que le escuche.",
+            )
+            return
         self.player.interrumpir()
         await self._cancelar_turno()
         self._vaciar_cola_voz()
         self._lanzar(self._ciclo_conversacion(saludar=True))
+
+    # ── pausa del micrófono ─────────────────────────────────────────────
+    #
+    # Sale casi gratis porque el bucle de audio sólo consulta la wake word
+    # estando en reposo: basta con no estar en reposo. Los frames se siguen
+    # leyendo —parar el `MicStream` y volver a abrirlo es mucho más frágil que
+    # ignorarlos— pero no se mira ninguno.
+    @property
+    def pausado(self) -> bool:
+        """El deseo del usuario, no el estado del momento.
+
+        Importa la diferencia: en mitad de un turno lanzado desde el HUD el
+        estado es PENSANDO, y aun así el micrófono sigue en pausa.
+        """
+        return self._pausado
+
+    def pausar(self) -> None:
+        """Deja de atender al «Hey Jarvis» hasta nueva orden."""
+        self._pausado = True
+        if self.state is State.DORMIDO:
+            self._set_state(State.PAUSADO)
+
+    def reanudar(self) -> None:
+        self._pausado = False
+        if self.state is State.PAUSADO:
+            self._set_state(State.DORMIDO)
+
+    def alternar_pausa(self) -> bool:
+        """Pausa o reanuda, y dice cómo ha quedado. Para el menú y el HUD."""
+        if self._pausado:
+            self.reanudar()
+        else:
+            self.pausar()
+        return self._pausado
 
     async def _cancelar_turno(self) -> None:
         if self._turno is not None and not self._turno.done():
