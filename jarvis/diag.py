@@ -68,17 +68,23 @@ def _comprobar_credenciales() -> None:
 
 def _comprobar_dependencias() -> None:
     _seccion("Dependencias")
+    # El tercer campo es el extra que lo trae: sin él, el consejo de instalación
+    # mandaba a todo el mundo a `[voice]`, aunque lo que faltara fuese la
+    # bandeja. El cuarto marca lo prescindible: quedarse sin icono es una
+    # merma, no una avería, y pintarlo en rojo asustaría para nada.
     modulos = [
-        ("sounddevice", "captura y reproducción de audio"),
-        ("numpy", "procesado de señal"),
-        ("faster_whisper", "transcripción y VAD"),
-        ("onnxruntime", "motor del VAD y del wake word"),
-        ("openwakeword", 'palabra clave "Hey Jarvis"'),
-        ("edge_tts", "voz por defecto"),
-        ("av", "decodificación de audio"),
-        ("pynput", "atajo de teclado global"),
+        ("sounddevice", "captura y reproducción de audio", "voice", False),
+        ("numpy", "procesado de señal", "voice", False),
+        ("faster_whisper", "transcripción y VAD", "voice", False),
+        ("onnxruntime", "motor del VAD y del wake word", "voice", False),
+        ("openwakeword", 'palabra clave "Hey Jarvis"', "voice", False),
+        ("edge_tts", "voz por defecto", "voice", False),
+        ("av", "decodificación de audio", "voice", False),
+        ("pynput", "atajo de teclado global", "voice", False),
+        ("PIL", "dibujo del icono de la bandeja", "bandeja", True),
+        ("pystray", "icono en el área de notificación", "bandeja", True),
     ]
-    for nombre, para_que in modulos:
+    for nombre, para_que, extra, opcional in modulos:
         try:
             __import__(nombre)
         except Exception as exc:  # noqa: BLE001 - un paquete roto no puede tumbar esto
@@ -89,8 +95,9 @@ def _comprobar_dependencias() -> None:
                 detalle = f"→ instalado, pero no carga: {_una_linea(exc)}"
             else:
                 # Los corchetes se escapan: rich los interpreta como marcado.
-                detalle = r'→ falta: [cyan]pip install -e ".\[voice]"[/cyan]'
-            console.print(f"  {FALLO} {nombre:<16} [dim]{para_que}[/dim]  {detalle}")
+                detalle = rf'→ falta: [cyan]pip install -e ".\[{extra}]"[/cyan]'
+            marca = AVISO if opcional else FALLO
+            console.print(f"  {marca} {nombre:<16} [dim]{para_que}[/dim]  {detalle}")
         else:
             console.print(f"  {OK} {nombre:<16} [dim]{para_que}[/dim]")
 

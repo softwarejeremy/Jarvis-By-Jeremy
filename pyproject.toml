@@ -44,6 +44,14 @@ web = [
     # móvil no da acceso al micrófono.
     "cryptography>=42.0",
 ]
+bandeja = [
+    # Icono en el área de notificación. Extra propio y no dentro de `windows`
+    # ni de `web`: en Windows es donde más falta hace —arrancando con el
+    # sistema no hay consola ninguna— pero también funciona en Linux, y `web`
+    # tiene que seguir instalándose en un servidor sin escritorio.
+    "pystray>=0.19.5",
+    "pillow>=10.0",  # pystray exige un PIL.Image; no es una dependencia extra
+]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.5"]
 
 [project.scripts]

@@ -264,6 +264,7 @@ body {
 .panel-reactor[data-estado="pensando"]       { --acento: var(--ambar); }
 .panel-reactor[data-estado="hablando"]       { --acento: var(--verde); }
 .panel-reactor[data-estado="confirmando"]    { --acento: var(--magenta); }
+.panel-reactor[data-estado="pausado"]        { --acento: #64748b; }
 .panel-reactor[data-estado="error"]          { --acento: var(--rojo); }
 
 .panel-reactor[data-estado="escuchando"] .nucleo,
