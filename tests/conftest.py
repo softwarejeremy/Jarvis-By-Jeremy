@@ -8,6 +8,7 @@ pensar, hablar— en una máquina sin micrófono ni tarjeta de sonido.
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -127,6 +128,89 @@ class TriggerWakeWord:
         return self._i == self._objetivo
 
 
+# ── dobles de la bandeja del sistema ────────────────────────────────────
+class IconoFalso:
+    """Sustituto de `pystray.Icon`: apunta lo que le hacen y no dibuja nada.
+
+    `run()` bloquea igual que el de verdad —es la bomba de mensajes— para que
+    los tests ejerciten el hilo real y detecten los fallos de cierre.
+    """
+
+    def __init__(self, nombre, icon=None, title=None, menu=None) -> None:  # noqa: ANN001
+        self.nombre = nombre
+        self._icon = icon
+        self.title = title
+        self.menu = menu
+        self.visible = False
+        self.parado = False
+        self.notificaciones: list[tuple[str, str]] = []
+        # Para comprobar que el repintado NO ocurre en el hilo del loop.
+        self.hilos_de_pintado: list[int] = []
+        self._suelto = threading.Event()
+
+    @property
+    def icon(self):  # noqa: ANN201
+        return self._icon
+
+    @icon.setter
+    def icon(self, valor) -> None:  # noqa: ANN001
+        self.hilos_de_pintado.append(threading.get_ident())
+        self._icon = valor
+
+    def run(self, setup=None) -> None:  # noqa: ANN001
+        if setup is not None:
+            setup(self)
+        self._suelto.wait(timeout=5)
+
+    def stop(self) -> None:
+        self.parado = True
+        self._suelto.set()
+
+    def notify(self, mensaje: str, titulo: str = "") -> None:
+        self.notificaciones.append((mensaje, titulo))
+
+
+class _MenuItemFalso:
+    def __init__(self, etiqueta, accion, checked=None, default=False) -> None:  # noqa: ANN001
+        self.etiqueta = etiqueta
+        self.accion = accion
+        self._checked = checked
+        self.default = default
+
+    @property
+    def marcado(self) -> bool:
+        return bool(self._checked(self)) if self._checked else False
+
+    @property
+    def es_conmutador(self) -> bool:
+        return self._checked is not None
+
+
+class _MenuFalso:
+    SEPARATOR = "───"
+
+    def __init__(self, *elementos) -> None:  # noqa: ANN002
+        self.elementos = list(elementos)
+
+    @property
+    def entradas(self) -> list[_MenuItemFalso]:
+        return [e for e in self.elementos if isinstance(e, _MenuItemFalso)]
+
+    def por_etiqueta(self, etiqueta: str) -> _MenuItemFalso:
+        for e in self.entradas:
+            if e.etiqueta == etiqueta:
+                return e
+        raise KeyError(f"no hay ninguna entrada «{etiqueta}» en el menú")
+
+
+class PystrayFalso:
+    """El módulo pystray, de mentira. Se inyecta en `Bandeja(backend=...)`."""
+
+    Icon = IconoFalso
+    MenuItem = _MenuItemFalso
+    Menu = _MenuFalso
+
+
 # ── fixtures ────────────────────────────────────────────────────────────
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
@@ -154,6 +238,8 @@ __all__ = [
     "Done",
     "FakeAgent",
     "FakeTTS",
+    "IconoFalso",
+    "PystrayFalso",
     "ScriptedDetector",
     "ToolCall",
     "TriggerWakeWord",
