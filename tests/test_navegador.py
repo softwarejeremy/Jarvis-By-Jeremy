@@ -17,7 +17,13 @@ def _puerto_libre() -> int:
 
 class TestEsperarPuerto:
     async def test_detecta_a_quien_ya_escucha(self):
-        servidor = await asyncio.start_server(lambda *_: None, "127.0.0.1", 0)
+        # El callback cierra la conexión que acepta: en Python 3.12+
+        # `Server.wait_closed()` espera también a que se cierren las
+        # conexiones ya aceptadas, no sólo a que el socket deje de escuchar.
+        # Con un callback que no cierra nada (p. ej. `lambda *_: None`) esa
+        # conexión queda abierta para siempre y el `wait_closed()` del
+        # `finally` se cuelga.
+        servidor = await asyncio.start_server(lambda _r, w: w.close(), "127.0.0.1", 0)
         puerto = servidor.sockets[0].getsockname()[1]
         try:
             assert await navegador.esperar_puerto(puerto, timeout=2.0) is True
@@ -34,7 +40,7 @@ class TestEsperarPuerto:
         async def levantar_tarde():
             nonlocal servidor
             await asyncio.sleep(0.3)
-            servidor = await asyncio.start_server(lambda *_: None, "127.0.0.1", puerto)
+            servidor = await asyncio.start_server(lambda _r, w: w.close(), "127.0.0.1", puerto)
 
         tarde = asyncio.create_task(levantar_tarde())
         try:
@@ -54,7 +60,7 @@ class TestAbrirCuandoEscuche:
         abiertas = []
         monkeypatch.setattr(navegador, "abrir", lambda url: abiertas.append(url) or True)
 
-        servidor = await asyncio.start_server(lambda *_: None, "127.0.0.1", 0)
+        servidor = await asyncio.start_server(lambda _r, w: w.close(), "127.0.0.1", 0)
         puerto = servidor.sockets[0].getsockname()[1]
         try:
             ok = await navegador.abrir_cuando_escuche(f"http://localhost:{puerto}", puerto)
@@ -87,7 +93,7 @@ class TestAbrirCuandoEscuche:
             navegador, "abrir", lambda url: hilos.append(threading.get_ident()) or True
         )
 
-        servidor = await asyncio.start_server(lambda *_: None, "127.0.0.1", 0)
+        servidor = await asyncio.start_server(lambda _r, w: w.close(), "127.0.0.1", 0)
         puerto = servidor.sockets[0].getsockname()[1]
         try:
             await navegador.abrir_cuando_escuche("http://x", puerto)
