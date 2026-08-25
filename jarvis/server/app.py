@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -28,12 +29,17 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..core.permissions import interpretar_respuesta
-from ..events import EventType
+from ..events import Event, EventType
 
 if TYPE_CHECKING:
     from ..core.core import JarvisCore
 
 ESTATICOS = Path(__file__).parent / "static"
+
+# Cuántos turnos se recuerdan para reponerlos al conectar. El historial vive
+# sólo en memoria del proceso —no en disco—, así que basta con acotarlo; no
+# hace falta paginarlo ni persistirlo.
+HISTORIAL_MAXLEN = 80
 
 
 def ip_local() -> str | None:
@@ -68,6 +74,27 @@ def crear_app(core: JarvisCore) -> FastAPI:
     app = FastAPI(title="J.A.R.V.I.S.", docs_url=None, redoc_url=None)
     app.mount("/estaticos", StaticFiles(directory=ESTATICOS), name="estaticos")
 
+    # Se alimenta del mismo bus que ya usa el resto del HUD: no hay un
+    # segundo camino por el que pueda perderse un turno.
+    historial: deque[dict[str, str]] = deque(maxlen=HISTORIAL_MAXLEN)
+
+    def _guardar_en_historial(evento: Event) -> None:
+        if evento.type is EventType.FINAL_TRANSCRIPT:
+            # La respuesta a un "¿lo autoriza?" no es parte de la charla.
+            if evento.data.get("kind") == "confirmacion":
+                return
+            texto = str(evento.data.get("text", "")).strip()
+            if texto:
+                historial.append({"quien": "usuario", "texto": texto})
+        elif evento.type is EventType.ASSISTANT_DONE:
+            # El evento ya trae la respuesta entera: no hace falta acumular
+            # los `assistant_delta` a mano.
+            texto = str(evento.data.get("text", "")).strip()
+            if texto:
+                historial.append({"quien": "jarvis", "texto": texto})
+
+    core.bus.on(_guardar_en_historial)
+
     @app.get("/")
     async def raiz():  # noqa: ANN202
         return FileResponse(ESTATICOS / "index.html")
@@ -99,6 +126,12 @@ def crear_app(core: JarvisCore) -> FastAPI:
         await ws.send_text(
             json.dumps(
                 {"type": "state_changed", "data": {"state": core.state.value}},
+                default=_a_json,
+            )
+        )
+        await ws.send_text(
+            json.dumps(
+                {"type": "historial", "data": {"turnos": list(historial)}},
                 default=_a_json,
             )
         )

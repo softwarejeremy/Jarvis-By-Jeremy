@@ -97,6 +97,10 @@ function manejar({ type, data = {} }) {
       pintarEstado(data.state);
       break;
 
+    case "historial":
+      pintarHistorial(data.turnos || []);
+      break;
+
     case "wake_detected":
       registrar("«Hey Jarvis» detectado", "ok");
       break;
@@ -175,6 +179,21 @@ function pintarPausa(pausado) {
   el.btnPausa.setAttribute("aria-pressed", String(pausado));
   el.btnPausa.classList.toggle("activo", pausado);
   el.btnPausaTexto.textContent = pausado ? "Reanudar micrófono" : "Pausar micrófono";
+}
+
+// Llega cada vez que se conecta un WebSocket, no sólo al arrancar: recargar
+// la página o entrar desde un segundo dispositivo repone la conversación en
+// vez de dejarla en blanco. Repintar entero es más simple que llevar la
+// cuenta de qué turnos ya están puestos, y no duplica nada porque siempre
+// parte de cero.
+function pintarHistorial(turnos) {
+  turnoJarvis = null;
+  if (turnos.length === 0) {
+    el.conversacion.innerHTML = '<p class="vacio">Todavía no habéis hablado.</p>';
+    return;
+  }
+  el.conversacion.innerHTML = "";
+  for (const turno of turnos) anadirTurno(turno.quien, turno.texto);
 }
 
 function anadirTurno(quien, texto) {

@@ -149,6 +149,9 @@ gasto acumulado.
 Es el **mismo núcleo**: lo que digas por voz sale en la pantalla, y lo que escribas
 en la pantalla lo contesta por voz. No son dos programas.
 
+Recargar la página, o entrar desde otro dispositivo a media conversación, no
+te deja con el HUD en blanco: repone los últimos turnos en cuanto conecta.
+
 **Desde el móvil**: al arrancar con `--web`, J.A.R.V.I.S. te imprime las dos
 direcciones, ya calculadas:
 

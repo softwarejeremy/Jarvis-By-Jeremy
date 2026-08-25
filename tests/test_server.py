@@ -20,7 +20,7 @@ from jarvis.audio.stt import FakeTranscriber
 from jarvis.audio.wakeword import NullWakeWord
 from jarvis.core.core import JarvisCore
 from jarvis.events import EventType
-from jarvis.server.app import _atender, _atender_audio, crear_app
+from jarvis.server.app import HISTORIAL_MAXLEN, _atender, _atender_audio, crear_app
 
 from .conftest import FakeAgent, FakeTTS
 
@@ -87,10 +87,68 @@ class TestWebSocket:
     def test_reenvia_los_eventos_del_bus(self, cliente):
         with cliente.websocket_connect("/ws") as ws:
             ws.receive_json()  # el estado inicial
+            ws.receive_json()  # el historial (vacío)
             cliente.core.bus.emit(EventType.LOG, message="hola")
             evento = ws.receive_json()
         assert evento["type"] == "log"
         assert evento["data"]["message"] == "hola"
+
+
+class TestHistorial:
+    """Reponer la conversación al conectar: recargar, o entrar desde otro
+    dispositivo, no debe dejar el HUD en blanco a media charla."""
+
+    def test_arranca_vacio(self, cliente):
+        with cliente.websocket_connect("/ws") as ws:
+            ws.receive_json()  # el estado inicial
+            historial = ws.receive_json()
+        assert historial["type"] == "historial"
+        assert historial["data"]["turnos"] == []
+
+    def test_repone_los_turnos_ya_ocurridos(self, cliente):
+        cliente.core.bus.emit(EventType.FINAL_TRANSCRIPT, text="hola")
+        cliente.core.bus.emit(EventType.ASSISTANT_DONE, text="¿En qué le ayudo?")
+
+        with cliente.websocket_connect("/ws") as ws:
+            ws.receive_json()  # el estado inicial
+            historial = ws.receive_json()
+
+        assert historial["data"]["turnos"] == [
+            {"quien": "usuario", "texto": "hola"},
+            {"quien": "jarvis", "texto": "¿En qué le ayudo?"},
+        ]
+
+    def test_las_confirmaciones_no_entran_en_el_historial(self, cliente):
+        # Es la respuesta a un "¿lo autoriza?", no parte de la charla; ya
+        # tiene su propio hueco en el panel de Actividad.
+        cliente.core.bus.emit(EventType.FINAL_TRANSCRIPT, text="sí", kind="confirmacion")
+
+        with cliente.websocket_connect("/ws") as ws:
+            ws.receive_json()
+            historial = ws.receive_json()
+        assert historial["data"]["turnos"] == []
+
+    def test_las_respuestas_vacias_no_entran(self, cliente):
+        cliente.core.bus.emit(EventType.ASSISTANT_DONE, text="")
+
+        with cliente.websocket_connect("/ws") as ws:
+            ws.receive_json()
+            historial = ws.receive_json()
+        assert historial["data"]["turnos"] == []
+
+    def test_respeta_el_tope(self, cliente):
+        for i in range(HISTORIAL_MAXLEN + 10):
+            cliente.core.bus.emit(EventType.FINAL_TRANSCRIPT, text=f"mensaje {i}")
+
+        with cliente.websocket_connect("/ws") as ws:
+            ws.receive_json()
+            historial = ws.receive_json()
+
+        turnos = historial["data"]["turnos"]
+        assert len(turnos) == HISTORIAL_MAXLEN
+        # Se descartan los más antiguos primero, no los más recientes.
+        assert turnos[0]["texto"] == "mensaje 10"
+        assert turnos[-1]["texto"] == f"mensaje {HISTORIAL_MAXLEN + 9}"
 
 
 class TestOrdenes:
