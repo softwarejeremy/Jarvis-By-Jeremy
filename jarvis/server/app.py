@@ -323,6 +323,13 @@ async def _atender(core: JarvisCore, mensaje: dict[str, Any]) -> None:
                 core.responder_confirmacion(decision)
             return
 
+        # `core.responder()` no emite `final_transcript` —el modo `--texto`
+        # de la terminal no lo necesita, se ve escrito en la propia consola—,
+        # pero el HUD sí: es la señal que alimenta el historial que se repone
+        # al reconectar. Sin esto, un turno tecleado desaparecería al recargar
+        # aunque la respuesta de J.A.R.V.I.S. sí sobreviviera.
+        core.bus.emit(EventType.FINAL_TRANSCRIPT, text=texto)
+
         # En su propia tarea: el WebSocket tiene que seguir leyendo para
         # que el botón de interrumpir funcione mientras responde.
         asyncio.create_task(core.responder(texto))

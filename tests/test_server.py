@@ -127,6 +127,27 @@ class TestHistorial:
             {"quien": "jarvis", "texto": "¿En qué le ayudo?"},
         ]
 
+    def test_un_turno_tecleado_se_repone_tambien(self, cliente):
+        # A diferencia de los otros tests de esta clase, aquí no se emite el
+        # evento a mano: se manda por el WebSocket, el mismo camino real
+        # (_atender) que usa el HUD. Es donde vivía el hueco — core.responder()
+        # no emite nada por sí solo, así que un turno tecleado se perdía al
+        # reconectar aunque la respuesta de J.A.R.V.I.S. sí sobreviviera.
+        with cliente.websocket_connect("/ws") as ws:
+            ws.receive_json()  # el estado inicial
+            ws.receive_json()  # el historial (vacío)
+            ws.send_json({"type": "texto", "text": "qué hora es"})
+            eco = ws.receive_json()  # el propio turno, reenviado por el bus
+
+        assert eco["type"] == "final_transcript"
+        assert eco["data"]["text"] == "qué hora es"
+
+        with cliente.websocket_connect("/ws") as ws:
+            ws.receive_json()
+            historial = ws.receive_json()
+
+        assert {"quien": "usuario", "texto": "qué hora es"} in historial["data"]["turnos"]
+
     def test_las_confirmaciones_no_entran_en_el_historial(self, cliente):
         # Es la respuesta a un "¿lo autoriza?", no parte de la charla; ya
         # tiene su propio hueco en el panel de Actividad.
@@ -290,6 +311,25 @@ class TestOrdenes:
         finally:
             await core.stop()
         assert core.agent.preguntas == ["hola"]
+
+    async def test_texto_emite_final_transcript_para_el_historial(self, settings):
+        # Sin esto, un turno tecleado en el HUD desaparecería al reconectar:
+        # `core.responder()` no emite nada por sí solo, a diferencia del
+        # camino por voz (`_entender_y_responder`), que sí lo hace.
+        core = construir_core(settings)
+        eventos = []
+        core.bus.on(eventos.append)
+        await core.start()
+        try:
+            await _atender(core, {"type": "texto", "text": "qué hora es"})
+            await asyncio.sleep(0.1)
+        finally:
+            await core.stop()
+
+        transcritos = [e for e in eventos if e.type is EventType.FINAL_TRANSCRIPT]
+        assert len(transcritos) == 1
+        assert transcritos[0].data["text"] == "qué hora es"
+        assert "kind" not in transcritos[0].data
 
     async def test_el_texto_vacio_se_ignora(self, settings):
         core = construir_core(settings)

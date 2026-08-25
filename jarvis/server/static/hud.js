@@ -543,7 +543,10 @@ el.formulario.addEventListener("submit", (ev) => {
   const texto = el.campo.value.trim();
   if (!texto) return;
   if (enviar({ type: "texto", text: texto })) {
-    anadirTurno("usuario", texto);
+    // No se pinta aquí mismo: el servidor devuelve el mismo "final_transcript"
+    // que ya pinta la voz, y por ahí entra también al historial que se repone
+    // al reconectar. Pintarlo dos veces —aquí y al volver por el socket—
+    // duplicaría el turno.
     el.campo.value = "";
   } else {
     registrar("Sin conexión: no se ha enviado", "error");
