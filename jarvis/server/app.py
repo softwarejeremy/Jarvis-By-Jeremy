@@ -25,8 +25,8 @@ from typing import TYPE_CHECKING, Any
 # de una función es invisible para él, y el resultado es un 403 en el
 # handshake que no dice nada. Este módulo sólo se importa cuando se pide
 # `--web`, así que no encarece el arranque normal.
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -80,6 +80,30 @@ def ip_local() -> str | None:
 def _a_json(dato: Any) -> Any:
     """Convierte lo que no sea serializable (rutas, enums) en texto."""
     return str(dato)
+
+
+def _qr_svg(url: str) -> str | None:
+    """El QR de una URL como SVG en línea, para el overlay del HUD.
+
+    Mismo espíritu que `main._qr_para_terminal`: `qrcode` es parte del extra
+    `web`, pero si algo falla generándolo, la URL en texto plano del overlay
+    sigue siendo suficiente para copiarla a mano.
+    """
+    try:
+        import io
+
+        import qrcode
+        from qrcode.image.svg import SvgPathImage
+
+        qr = qrcode.QRCode(border=1)
+        qr.add_data(url)
+        qr.make(fit=True)
+
+        buffer = io.BytesIO()
+        qr.make_image(image_factory=SvgPathImage).save(buffer)
+        return buffer.getvalue().decode("utf-8")
+    except Exception:  # noqa: BLE001 - sin QR, la URL en texto basta
+        return None
 
 
 def crear_app(core: JarvisCore) -> FastAPI:
@@ -148,6 +172,37 @@ def crear_app(core: JarvisCore) -> FastAPI:
     async def memoria_olvidar(peticion: _PeticionOlvidar):  # noqa: ANN202
         mensaje = Memory(core.s.memory_dir).olvidar(peticion.texto)
         return {"mensaje": mensaje, "memoria": _memoria_actual()}
+
+    @app.get("/api/movil")
+    async def movil(request: Request):  # noqa: ANN202
+        """La URL y el QR para abrir este mismo HUD desde el móvil.
+
+        El esquema y el puerto se leen de la propia petición, no de un
+        parámetro guardado al arrancar: es exactamente por dónde el
+        navegador que pide esto está mirando la página ahora mismo, así que
+        no puede desincronizarse de `--https`/`--puerto`.
+        """
+        ip = ip_local()
+        puerto = request.url.port
+        if not ip or not puerto:
+            return {"url": None, "qr_svg": None}
+
+        url = f"{request.url.scheme}://{ip}:{puerto}"
+        return {"url": url, "qr_svg": _qr_svg(url)}
+
+    @app.get("/estaticos-generados/icono-180.png")
+    async def icono_apple():  # noqa: ANN202
+        """PNG del reactor para `apple-touch-icon`: iOS no acepta SVG ahí."""
+        from ..ui.icono import dibujar_reactor, hay_pillow
+
+        if not hay_pillow():
+            raise HTTPException(status_code=404, detail="Pillow no está instalado")
+
+        import io
+
+        buffer = io.BytesIO()
+        dibujar_reactor("dormido", 180).save(buffer, format="PNG")
+        return Response(content=buffer.getvalue(), media_type="image/png")
 
     @app.websocket("/ws")
     async def websocket(ws: WebSocket) -> None:

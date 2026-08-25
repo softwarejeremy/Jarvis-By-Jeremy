@@ -165,6 +165,17 @@ misma wifi. La primera vez Windows preguntará si permites la conexión: hay que
 decir que sí **para la red privada**. Si no aparece la segunda línea, es que el
 equipo no está en ninguna red local.
 
+Para no tener que teclearla, debajo se imprime un **código QR**: apunta la
+cámara del móvil a la terminal y se abre solo. El mismo QR, más cómodo de
+escanear, está también en el HUD: el icono de teléfono junto al indicador de
+conexión abre un overlay con el código y la URL en texto.
+
+Una vez abierto en el móvil, "Añadir a la pantalla de inicio" desde el menú
+del navegador deja un icono con el que volver de un toque, sin pasar otra vez
+por el QR. Con el certificado autofirmado de `--https`, Android lo instala
+como acceso directo en vez de como app «instalada» de verdad — para abrirlo
+de un toque da exactamente igual.
+
 ### Hablarle desde el móvil
 
 ```powershell
@@ -389,7 +400,7 @@ que tocar.
 
 ```bash
 pip install -e ".[voice,dev,web,bandeja]"
-pytest              # 313 tests, sin necesidad de micrófono
+pytest              # 364 tests, sin necesidad de micrófono
 ruff check jarvis tests
 ```
 

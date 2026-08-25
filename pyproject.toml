@@ -43,6 +43,9 @@ web = [
     # Certificado autofirmado para --https, sin el cual el navegador del
     # móvil no da acceso al micrófono.
     "cryptography>=42.0",
+    # Código QR para abrir el HUD desde el móvil sin teclear la IP. Puro
+    # Python: ni SVG ni el ASCII de la terminal necesitan Pillow.
+    "qrcode>=7.4",
 ]
 bandeja = [
     # Icono en el área de notificación. Extra propio y no dentro de `windows`

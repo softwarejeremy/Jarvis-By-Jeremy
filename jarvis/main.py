@@ -171,6 +171,30 @@ def _leer_wav(ruta: Path):  # noqa: ANN202
     return np.frombuffer(crudo, dtype=np.int16).astype(np.float32) / 32768.0
 
 
+def _qr_para_terminal(url: str) -> str | None:
+    """El QR de una URL, listo para pegar en la terminal.
+
+    Apuntar la cámara del móvil a la terminal abre el HUD sin teclear la IP.
+    `qrcode` es parte del extra `web`; si falta —o algo más sale mal
+    generándolo— no hay QR, pero la URL en texto de la línea de arriba sigue
+    ahí: no es motivo para tumbar el arranque.
+    """
+    try:
+        import io
+
+        import qrcode
+
+        qr = qrcode.QRCode(border=1)
+        qr.add_data(url)
+        qr.make(fit=True)
+
+        salida = io.StringIO()
+        qr.print_ascii(out=salida, invert=True)
+        return salida.getvalue()
+    except Exception:  # noqa: BLE001 - sin QR se sigue viendo la URL en texto
+        return None
+
+
 async def _main_async(args: argparse.Namespace, argv_crudo: list[str]) -> int:
     s = load_settings(Path(args.config) if args.config else None)
     bus = EventBus()
@@ -281,10 +305,14 @@ async def _arrancar_todo(
         # es trasladarle un trabajo que la máquina hace mejor.
         ip = ip_local()
         if ip:
+            url_movil = f"{esquema}://{ip}:{args.puerto}"
             hud.console.print(
-                f"  [bold cyan]desde el móvil:[/bold cyan] {esquema}://{ip}:{args.puerto}"
+                f"  [bold cyan]desde el móvil:[/bold cyan] {url_movil}"
                 "  [dim](misma red wifi)[/dim]"
             )
+            qr = _qr_para_terminal(url_movil)
+            if qr:
+                hud.console.print(qr)
 
         if args.https:
             hud.console.print(

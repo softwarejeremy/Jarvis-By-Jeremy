@@ -10,6 +10,7 @@ que costó encontrar: el WebSocket devolvía 403 porque, con
 from __future__ import annotations
 
 import asyncio
+import sys
 
 import numpy as np
 import pytest
@@ -55,8 +56,15 @@ class TestPaginas:
         assert "J.A.R.V.I.S." in r.text
 
     def test_sirve_los_estaticos(self, cliente):
-        for ruta in ("/estaticos/estilo.css", "/estaticos/hud.js"):
+        for ruta in ("/estaticos/estilo.css", "/estaticos/hud.js", "/estaticos/icono.svg"):
             assert cliente.get(ruta).status_code == 200, ruta
+
+    def test_sirve_el_manifest_de_la_pwa(self, cliente):
+        r = cliente.get("/estaticos/manifest.json")
+        assert r.status_code == 200
+        datos = r.json()
+        assert datos["start_url"] == "/"
+        assert datos["display"] == "standalone"
 
 
 class TestApiEstado:
@@ -203,6 +211,71 @@ class TestApiMemoria:
         entrada = cliente.get("/api/memoria").json()["notas"][0]
 
         assert entrada == "tiene un gato llamado Pixel"
+
+
+class TestApiMovil:
+    """Abrir el HUD desde el móvil sin teclear la IP."""
+
+    # `request.url.port` en el TestClient de Starlette sólo se rellena si el
+    # `Host` de la petición lo incluye —su `base_url` por defecto no lleva
+    # puerto—, así que se fija a mano aquí para que el endpoint tenga algo
+    # que devolver, tal como pasaría en una petición real del navegador.
+    CABECERAS = {"host": "192.168.1.37:8765"}
+
+    def test_sin_ip_local_no_hay_nada_que_ofrecer(self, cliente, monkeypatch):
+        import jarvis.server.app as app_modulo
+
+        monkeypatch.setattr(app_modulo, "ip_local", lambda: None)
+
+        datos = cliente.get("/api/movil", headers=self.CABECERAS).json()
+
+        assert datos == {"url": None, "qr_svg": None}
+
+    def test_devuelve_la_url_y_el_qr(self, cliente, monkeypatch):
+        pytest.importorskip("qrcode", reason="el QR necesita el paquete qrcode (extra `web`)")
+        import jarvis.server.app as app_modulo
+
+        monkeypatch.setattr(app_modulo, "ip_local", lambda: "192.168.1.37")
+
+        datos = cliente.get("/api/movil", headers=self.CABECERAS).json()
+
+        assert datos["url"] == "http://192.168.1.37:8765"
+        assert datos["qr_svg"] and "<svg" in datos["qr_svg"]
+
+    def test_sin_qrcode_instalado_sigue_dando_la_url(self, cliente, monkeypatch):
+        # Degradación como cualquier otra dependencia opcional: sin `qrcode`
+        # no hay QR, pero la URL en texto sigue siendo útil.
+        import jarvis.server.app as app_modulo
+
+        monkeypatch.setattr(app_modulo, "ip_local", lambda: "192.168.1.37")
+        monkeypatch.setitem(sys.modules, "qrcode", None)
+
+        datos = cliente.get("/api/movil", headers=self.CABECERAS).json()
+
+        assert datos["url"] == "http://192.168.1.37:8765"
+        assert datos["qr_svg"] is None
+
+
+class TestIconoApple:
+    """El PNG para `apple-touch-icon`: iOS no acepta el SVG del favicon."""
+
+    def test_responde_un_png(self, cliente):
+        pil = pytest.importorskip("PIL", reason="el icono necesita Pillow (extra `bandeja`)")
+        del pil
+
+        r = cliente.get("/estaticos-generados/icono-180.png")
+
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "image/png"
+
+    def test_sin_pillow_da_404(self, cliente, monkeypatch):
+        # Forzado, no confiado en que este sandbox carezca de Pillow: así el
+        # test es igual de fiable aquí, en la CI y en el Windows de Jeremy.
+        monkeypatch.setitem(sys.modules, "PIL", None)
+
+        r = cliente.get("/estaticos-generados/icono-180.png")
+
+        assert r.status_code == 404
 
 
 class TestOrdenes:

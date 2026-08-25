@@ -16,8 +16,11 @@ import argparse
 import asyncio
 import contextlib
 import socket
+import sys
 import threading
 import time
+
+import pytest
 
 from jarvis import instancia, main
 from jarvis.audio.player import NullPlayer
@@ -317,3 +320,22 @@ class TestElCtrlCSiempreVuelve:
         )
         if resultado is not None:
             assert resultado == 0
+
+
+class TestQrParaLaTerminal:
+    """Escanear la cámara del móvil contra la terminal, sin teclear la IP."""
+
+    def test_devuelve_un_qr_con_qrcode_instalado(self):
+        pytest.importorskip("qrcode", reason="el QR necesita el paquete qrcode (extra `web`)")
+
+        qr = main._qr_para_terminal("http://192.168.1.37:8765")
+
+        assert qr
+        assert "\n" in qr, "un QR de una sola línea no es un QR"
+
+    def test_sin_qrcode_no_revienta(self, monkeypatch):
+        # Forzado en vez de confiar en que este sandbox no tenga `qrcode`: así
+        # el test es igual de fiable aquí, en la CI y en el Windows de Jeremy.
+        monkeypatch.setitem(sys.modules, "qrcode", None)
+
+        assert main._qr_para_terminal("http://192.168.1.37:8765") is None

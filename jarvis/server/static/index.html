@@ -7,6 +7,8 @@
 <title>J.A.R.V.I.S.</title>
 <link rel="stylesheet" href="/estaticos/estilo.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='%2338bdf8' stroke-width='8'/><circle cx='50' cy='50' r='16' fill='%2338bdf8'/></svg>">
+<link rel="manifest" href="/estaticos/manifest.json">
+<link rel="apple-touch-icon" href="/estaticos-generados/icono-180.png">
 </head>
 <body>
 
@@ -24,8 +26,22 @@
     <div class="indicador conexion" id="conexion" data-estado="desconectado">
       <span class="punto"></span><span id="conexion-texto">sin conexión</span>
     </div>
+    <button id="btn-movil" class="boton-movil" type="button" title="Abrir desde el móvil" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>
+    </button>
   </div>
 </header>
+
+<!-- ── Acceso desde el móvil ─────────────────────────────────── -->
+<div class="movil" id="movil-overlay" hidden>
+  <div class="movil-caja">
+    <button class="movil-cerrar" id="btn-movil-cerrar" type="button" aria-label="Cerrar">✕</button>
+    <p class="movil-titulo">Abrir desde el móvil</p>
+    <div class="movil-qr" id="movil-qr"></div>
+    <p class="movil-url" id="movil-url"></p>
+    <p class="movil-nota">Misma red wifi. Apunte la cámara del teléfono al código.</p>
+  </div>
+</div>
 
 <main class="tablero">
 

@@ -31,6 +31,11 @@ const el = {
   permisoTexto: $("permiso-texto"),
   btnPermisoSi: $("btn-permiso-si"),
   btnPermisoNo: $("btn-permiso-no"),
+  btnMovil: $("btn-movil"),
+  movilOverlay: $("movil-overlay"),
+  btnMovilCerrar: $("btn-movil-cerrar"),
+  movilQr: $("movil-qr"),
+  movilUrl: $("movil-url"),
 };
 
 // Qué decirle al usuario en cada estado. Un HUD que sólo muestra el
@@ -328,6 +333,31 @@ async function olvidarEntrada(texto) {
   }
 }
 
+/* ── Acceso desde el móvil ─────────────────────────────────── */
+// Ya en el propio móvil esto no aporta nada —está justo mirando esta
+// pantalla—, pero no molesta: el botón simplemente no aparece si /api/movil
+// no encuentra una IP de red local que ofrecer.
+async function cargarAccesoMovil() {
+  try {
+    const r = await fetch("/api/movil");
+    const datos = await r.json();
+    if (!datos.url) return;
+
+    el.movilUrl.textContent = datos.url;
+    el.movilQr.innerHTML = datos.qr_svg || "";
+    el.btnMovil.hidden = false;
+  } catch (e) {
+    // Sin datos que ofrecer, el botón se queda oculto: no hay nada roto
+    // que contar, sólo no hay forma de llegar al móvil desde aquí.
+  }
+}
+
+el.btnMovil.addEventListener("click", () => { el.movilOverlay.hidden = false; });
+el.btnMovilCerrar.addEventListener("click", () => { el.movilOverlay.hidden = true; });
+el.movilOverlay.addEventListener("click", (ev) => {
+  if (ev.target === el.movilOverlay) el.movilOverlay.hidden = true;
+});
+
 function resumirEntrada(entrada) {
   if (!entrada) return "";
   for (const campo of ["command", "file_path", "pattern", "query", "hecho", "url"]) {
@@ -603,4 +633,5 @@ fetch("/api/estado")
   .catch(() => {});
 
 cargarMemoria();
+cargarAccesoMovil();
 conectar();
