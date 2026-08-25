@@ -250,6 +250,10 @@ Además de leer y escribir archivos y buscar en la web, tiene herramientas propi
 | «bloquea la pantalla» | Bloquea la sesión | **Sí** |
 | «recuerda que…», «olvida lo de…» | Memoria de largo plazo | No |
 
+El panel **Memoria** del HUD web muestra lo que tiene anotado, organizado por
+categoría, con un botón para olvidar cada entrada sin tener que pedírselo por
+voz ni abrir los archivos a mano.
+
 El criterio de qué pregunta y qué no es simple: se ejecuta solo lo que no puede
 romper nada y cuyo efecto es evidente e inmediatamente reversible — oír el volumen
 subir es su propia confirmación. Lanzar programas no cumple eso, así que pregunta.

@@ -14,6 +14,7 @@ const el = {
   pista: $("estado-pista"),
   conversacion: $("conversacion"),
   actividad: $("actividad"),
+  memoria: $("memoria"),
   formulario: $("formulario"),
   campo: $("campo"),
   btnEscuchar: $("btn-escuchar"),
@@ -123,6 +124,11 @@ function manejar({ type, data = {} }) {
 
     case "tool_use":
       registrar(`${data.name}${resumirEntrada(data.input)}`, "herramienta");
+      // J.A.R.V.I.S. acaba de anotar o borrar algo: el panel se refresca
+      // solo, en vez de esperar a que el usuario recargue para verlo.
+      if (data.name === "mcp__jarvis__recordar" || data.name === "mcp__jarvis__olvidar") {
+        cargarMemoria();
+      }
       break;
 
     case "permission_request":
@@ -255,6 +261,71 @@ function registrar(mensaje, clase) {
   // El historial completo no aporta y acabaría comiendo memoria.
   while (el.actividad.children.length > 80) el.actividad.firstChild.remove();
   el.actividad.scrollTop = el.actividad.scrollHeight;
+}
+
+/* ── Memoria ───────────────────────────────────────────────── */
+async function cargarMemoria() {
+  try {
+    const r = await fetch("/api/memoria");
+    pintarMemoria(await r.json());
+  } catch (e) {
+    // Sin memoria que mostrar no hay mucho más que hacer aquí: el panel
+    // se queda con el mensaje de "todavía no recuerda nada" de partida.
+  }
+}
+
+function pintarMemoria(porCategoria) {
+  el.memoria.innerHTML = "";
+  const categorias = Object.entries(porCategoria || {}).filter(([, l]) => l.length);
+
+  if (categorias.length === 0) {
+    el.memoria.innerHTML = '<p class="vacio">Todavía no recuerda nada.</p>';
+    return;
+  }
+
+  for (const [categoria, entradas] of categorias) {
+    const titulo = document.createElement("p");
+    titulo.className = "memoria-categoria-titulo";
+    titulo.textContent = categoria.charAt(0).toUpperCase() + categoria.slice(1);
+    el.memoria.append(titulo);
+
+    for (const texto of entradas) {
+      const fila = document.createElement("div");
+      fila.className = "memoria-entrada";
+
+      const span = document.createElement("span");
+      span.className = "texto";
+      span.textContent = texto;
+
+      const boton = document.createElement("button");
+      boton.type = "button";
+      boton.className = "olvidar";
+      boton.title = "Olvidar";
+      boton.textContent = "✕";
+      boton.addEventListener("click", () => olvidarEntrada(texto));
+
+      fila.append(span, boton);
+      el.memoria.append(fila);
+    }
+  }
+}
+
+async function olvidarEntrada(texto) {
+  // Borrar memoria merece un clic de más: no es reversible desde el HUD.
+  if (!confirm(`¿Olvidar «${texto}»?`)) return;
+
+  try {
+    const r = await fetch("/api/memoria/olvidar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto }),
+    });
+    const datos = await r.json();
+    pintarMemoria(datos.memoria);
+    registrar(datos.mensaje, "");
+  } catch (e) {
+    registrar("No se pudo actualizar la memoria.", "error");
+  }
 }
 
 function resumirEntrada(entrada) {
@@ -531,4 +602,5 @@ fetch("/api/estado")
   })
   .catch(() => {});
 
+cargarMemoria();
 conectar();

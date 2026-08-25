@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import re
 from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -27,7 +28,9 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
+from ..core.memory import CATEGORIAS, Memory
 from ..core.permissions import interpretar_respuesta
 from ..events import Event, EventType
 
@@ -40,6 +43,16 @@ ESTATICOS = Path(__file__).parent / "static"
 # sólo en memoria del proceso —no en disco—, así que basta con acotarlo; no
 # hace falta paginarlo ni persistirlo.
 HISTORIAL_MAXLEN = 80
+
+
+class _PeticionOlvidar(BaseModel):
+    texto: str = ""
+
+
+# `Memory.recordar` guarda cada hecho como "- {hecho}  _(anotado el
+# AAAA-MM-DD)_": es útil al abrir el archivo a mano, pero en el HUD, sin
+# renderizar Markdown, sólo se verían los guiones bajos crudos.
+_FECHA_ANOTADO = re.compile(r"\s*_\(anotado el [\d-]+\)_\s*$")
 
 
 def ip_local() -> str | None:
@@ -95,6 +108,17 @@ def crear_app(core: JarvisCore) -> FastAPI:
 
     core.bus.on(_guardar_en_historial)
 
+    def _memoria_actual() -> dict[str, list[str]]:
+        m = Memory(core.s.memory_dir)
+        return {
+            categoria: [
+                _FECHA_ANOTADO.sub("", linea[2:].strip())
+                for linea in m.leer(categoria).splitlines()
+                if linea.startswith("- ")
+            ]
+            for categoria in CATEGORIAS
+        }
+
     @app.get("/")
     async def raiz():  # noqa: ANN202
         return FileResponse(ESTATICOS / "index.html")
@@ -115,6 +139,15 @@ def crear_app(core: JarvisCore) -> FastAPI:
             "pausado": core.pausado,
             "usuario": core.s.agent.user_name,
         }
+
+    @app.get("/api/memoria")
+    async def memoria():  # noqa: ANN202
+        return _memoria_actual()
+
+    @app.post("/api/memoria/olvidar")
+    async def memoria_olvidar(peticion: _PeticionOlvidar):  # noqa: ANN202
+        mensaje = Memory(core.s.memory_dir).olvidar(peticion.texto)
+        return {"mensaje": mensaje, "memoria": _memoria_actual()}
 
     @app.websocket("/ws")
     async def websocket(ws: WebSocket) -> None:

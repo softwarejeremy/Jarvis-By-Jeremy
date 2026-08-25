@@ -19,6 +19,7 @@ from jarvis.audio.player import NullPlayer
 from jarvis.audio.stt import FakeTranscriber
 from jarvis.audio.wakeword import NullWakeWord
 from jarvis.core.core import JarvisCore
+from jarvis.core.memory import CATEGORIAS, Memory
 from jarvis.events import EventType
 from jarvis.server.app import HISTORIAL_MAXLEN, _atender, _atender_audio, crear_app
 
@@ -149,6 +150,59 @@ class TestHistorial:
         # Se descartan los más antiguos primero, no los más recientes.
         assert turnos[0]["texto"] == "mensaje 10"
         assert turnos[-1]["texto"] == f"mensaje {HISTORIAL_MAXLEN + 9}"
+
+
+class TestApiMemoria:
+    """Consultar y borrar la memoria de largo plazo desde el HUD."""
+
+    def test_vacia_al_principio(self, cliente):
+        datos = cliente.get("/api/memoria").json()
+        assert set(datos) == set(CATEGORIAS)
+        assert all(entradas == [] for entradas in datos.values())
+
+    def test_devuelve_lo_recordado(self, settings, cliente):
+        Memory(settings.memory_dir).recordar("le gusta el café solo", "preferencias")
+
+        datos = cliente.get("/api/memoria").json()
+
+        assert len(datos["preferencias"]) == 1
+        assert "le gusta el café solo" in datos["preferencias"][0]
+        # Sin el guión de Markdown ni el resto de categorías contaminadas.
+        assert not datos["preferencias"][0].startswith("-")
+        assert datos["notas"] == []
+
+    def test_olvidar_borra_y_devuelve_el_listado_fresco(self, settings, cliente):
+        Memory(settings.memory_dir).recordar("trabaja en un cohete", "proyectos")
+
+        r = cliente.post("/api/memoria/olvidar", json={"texto": "cohete"})
+        datos = r.json()
+
+        assert r.status_code == 200
+        assert "olvidado" in datos["mensaje"].lower()
+        assert datos["memoria"]["proyectos"] == []
+
+    def test_olvidar_sin_coincidencias_no_revienta(self, cliente):
+        r = cliente.post("/api/memoria/olvidar", json={"texto": "esto no existe"})
+        assert r.status_code == 200
+        assert "no he encontrado" in r.json()["mensaje"].lower()
+
+    def test_olvidar_no_toca_lo_que_no_coincide(self, settings, cliente):
+        Memory(settings.memory_dir).recordar("le gusta el senderismo", "preferencias")
+
+        cliente.post("/api/memoria/olvidar", json={"texto": "algo que no está"})
+        datos = cliente.get("/api/memoria").json()
+
+        assert len(datos["preferencias"]) == 1
+
+    def test_no_muestra_la_marca_de_fecha_en_markdown_crudo(self, settings, cliente):
+        # `Memory.recordar` anota "_(anotado el AAAA-MM-DD)_" al final de cada
+        # línea; sin renderizar Markdown en el HUD eso se vería como guiones
+        # bajos sueltos en vez de cursiva.
+        Memory(settings.memory_dir).recordar("tiene un gato llamado Pixel", "notas")
+
+        entrada = cliente.get("/api/memoria").json()["notas"][0]
+
+        assert entrada == "tiene un gato llamado Pixel"
 
 
 class TestOrdenes:
