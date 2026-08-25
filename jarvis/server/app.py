@@ -27,6 +27,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from ..core.permissions import interpretar_respuesta
 from ..events import EventType
 
 if TYPE_CHECKING:
@@ -187,10 +188,23 @@ async def _atender(core: JarvisCore, mensaje: dict[str, Any]) -> None:
 
     if tipo == "texto":
         texto = str(mensaje.get("text", "")).strip()
-        if texto:
-            # En su propia tarea: el WebSocket tiene que seguir leyendo para
-            # que el botón de interrumpir funcione mientras responde.
-            asyncio.create_task(core.responder(texto))
+        if not texto:
+            return
+
+        # Con una confirmación pendiente, lo escrito responde a esa pregunta,
+        # no dispara un turno nuevo: es el mismo camino que la voz, sólo que
+        # tecleado en vez de dicho.
+        if core.confirmacion_pendiente:
+            decision = interpretar_respuesta(texto)
+            if decision is None:
+                core.bus.emit(EventType.LOG, message="No le he entendido. ¿Sí o no?")
+            else:
+                core.responder_confirmacion(decision)
+            return
+
+        # En su propia tarea: el WebSocket tiene que seguir leyendo para
+        # que el botón de interrumpir funcione mientras responde.
+        asyncio.create_task(core.responder(texto))
 
     elif tipo == "escuchar":
         asyncio.create_task(core.escuchar_ahora())
@@ -202,6 +216,11 @@ async def _atender(core: JarvisCore, mensaje: dict[str, Any]) -> None:
         # El mismo mando que la bandeja del sistema. Los dos frentes tienen que
         # poder lo mismo, o el HUD se convierte en una interfaz de segunda.
         core.alternar_pausa()
+
+    elif tipo == "confirmar":
+        # El mismo "sí"/"no" que la voz, para cuando contestar hablando no es
+        # una opción: desde el móvil, o sin micrófono en el navegador.
+        core.responder_confirmacion(bool(mensaje.get("allowed")))
 
 
 async def servir(

@@ -203,6 +203,74 @@ class TestAudioDelNavegador:
         assert len(recibido["audio"]) == 16_000
 
 
+class TestConfirmacionDesdeElHUD:
+    """Responder un permiso sin voz: desde el móvil, o sin micrófono."""
+
+    @staticmethod
+    async def _esperar_pendiente(core, timeout: float = 3.0) -> None:
+        limite = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < limite:
+            if core.confirmacion_pendiente:
+                return
+            await asyncio.sleep(0.01)
+        raise AssertionError("la confirmación nunca quedó pendiente")
+
+    async def test_la_orden_confirmar_autoriza(self, settings):
+        core = construir_core(settings)
+        await core.start()
+        try:
+            tarea = asyncio.create_task(core.confirmar_por_voz("¿Lo hago?"))
+            await self._esperar_pendiente(core)
+            await _atender(core, {"type": "confirmar", "allowed": True})
+            resultado = await asyncio.wait_for(tarea, timeout=3)
+        finally:
+            await core.stop()
+        assert resultado is True
+
+    async def test_la_orden_confirmar_deniega(self, settings):
+        core = construir_core(settings)
+        await core.start()
+        try:
+            tarea = asyncio.create_task(core.confirmar_por_voz("¿Lo hago?"))
+            await self._esperar_pendiente(core)
+            await _atender(core, {"type": "confirmar", "allowed": False})
+            resultado = await asyncio.wait_for(tarea, timeout=3)
+        finally:
+            await core.stop()
+        assert resultado is False
+
+    async def test_texto_durante_confirmacion_responde_en_vez_de_lanzar_un_turno(self, settings):
+        core = construir_core(settings)
+        await core.start()
+        try:
+            tarea = asyncio.create_task(core.confirmar_por_voz("¿Lo hago?"))
+            await self._esperar_pendiente(core)
+            await _atender(core, {"type": "texto", "text": "sí, adelante"})
+            resultado = await asyncio.wait_for(tarea, timeout=3)
+        finally:
+            await core.stop()
+        assert resultado is True
+        assert core.agent.preguntas == [], "no debía disparar un turno de Claude"
+
+    async def test_texto_ambiguo_durante_confirmacion_no_decide_nada(self, settings):
+        core = construir_core(settings)
+        eventos = []
+        core.bus.on(eventos.append)
+        await core.start()
+        try:
+            tarea = asyncio.create_task(core.confirmar_por_voz("¿Lo hago?"))
+            await self._esperar_pendiente(core)
+            await _atender(core, {"type": "texto", "text": "mmm no sé"})
+            await asyncio.sleep(0.05)
+            assert core.confirmacion_pendiente, "un «no sé» no debe decidir nada"
+            await _atender(core, {"type": "confirmar", "allowed": True})
+            resultado = await asyncio.wait_for(tarea, timeout=3)
+        finally:
+            await core.stop()
+        assert resultado is True
+        assert any("¿sí o no?" in e.data.get("message", "").lower() for e in eventos)
+
+
 class TestEscucharAudioEnElNucleo:
     async def test_transcribe_y_responde(self, settings):
         core = construir_core(settings)

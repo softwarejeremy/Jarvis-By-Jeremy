@@ -28,6 +28,8 @@ const el = {
   coste: $("coste"),
   permiso: $("permiso"),
   permisoTexto: $("permiso-texto"),
+  btnPermisoSi: $("btn-permiso-si"),
+  btnPermisoNo: $("btn-permiso-no"),
 };
 
 // Qué decirle al usuario en cada estado. Un HUD que sólo muestra el
@@ -462,6 +464,8 @@ if (usaMicrofonoDelNavegador()) {
 
 el.btnInterrumpir.addEventListener("click", () => enviar({ type: "interrumpir" }));
 el.btnPausa.addEventListener("click", () => enviar({ type: "pausa" }));
+el.btnPermisoSi.addEventListener("click", () => enviar({ type: "confirmar", allowed: true }));
+el.btnPermisoNo.addEventListener("click", () => enviar({ type: "confirmar", allowed: false }));
 
 // Barra espaciadora para hablar. Sólo cuando no hay nada enfocado: si el foco
 // está en un botón, el espacio ya lo pulsa, y disparábamos la escucha dos

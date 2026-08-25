@@ -265,8 +265,11 @@ Hay tres barreras, de más fuerte a más débil:
 
 1. **Rutas.** Escribir fuera de las carpetas autorizadas se deniega sin preguntar
    siquiera. Se configuran en `permissions.writable_paths`.
-2. **Confirmación hablada.** Escribir, editar o ejecutar exige un "sí" tuyo. Los
+2. **Confirmación.** Escribir, editar o ejecutar exige un "sí" tuyo. Los
    comandos de shell se leen **enteros y literales** antes de pedirte permiso.
+   Puedes contestar hablando o, si estás en el HUD web —también desde el
+   móvil, o sin micrófono a mano—, con los botones **Sí** / **No** del propio
+   aviso.
 3. **El silencio deniega.** Si no contestas en 12 segundos, la respuesta es no. Si tu
    respuesta es ambigua ("no sé"), vuelve a preguntar; a la segunda, deniega.
 

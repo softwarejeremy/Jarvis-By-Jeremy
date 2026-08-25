@@ -86,6 +86,7 @@ class JarvisCore:
 
         self._grabacion: list[np.ndarray] = []
         self._captura: asyncio.Future[np.ndarray] | None = None
+        self._respuesta_externa: asyncio.Future[bool] | None = None
         self._turno: asyncio.Task | None = None
         self._cola_voz: asyncio.Queue[str | None] = asyncio.Queue()
         self._worker_voz: asyncio.Task | None = None
@@ -527,35 +528,82 @@ class JarvisCore:
         self._turno = asyncio.create_task(coro)
 
     # ── confirmación hablada de permisos ────────────────────────────────
+    @property
+    def confirmacion_pendiente(self) -> bool:
+        """¿Hay una pregunta de permiso esperando un sí o un no?"""
+        return self._respuesta_externa is not None and not self._respuesta_externa.done()
+
+    def responder_confirmacion(self, permitir: bool) -> bool:
+        """Resuelve una confirmación en curso desde fuera de la voz (el HUD).
+
+        Es el mismo "sí"/"no" que `confirmar_por_voz` espera del micrófono,
+        sólo que llegado por otro camino: desde el móvil, o sin micrófono en
+        el navegador, contestar en voz alta no es una opción. Devuelve si de
+        verdad había algo pendiente que resolver.
+        """
+        futuro = self._respuesta_externa
+        if futuro is None or futuro.done():
+            self.bus.emit(EventType.LOG, message="No hay ninguna confirmación pendiente.")
+            return False
+        futuro.set_result(permitir)
+        return True
+
     async def confirmar_por_voz(self, pregunta: str) -> bool:
         """Lee la pregunta en voz alta y espera un sí o un no.
 
         Denegar por defecto no es pereza, es la decisión correcta: si no te
         oyó bien o te fuiste de la habitación, lo seguro es no hacer nada.
         Da dos oportunidades antes de rendirse.
+
+        Mientras espera, también puede ganar una respuesta llegada por otro
+        camino (`responder_confirmacion`, desde el HUD): la pregunta es la
+        misma diga lo que diga el usuario y por donde lo diga, así que las
+        dos vías corren en paralelo y gana la que conteste primero.
         """
         estado_previo = self.state
+        self._respuesta_externa = asyncio.get_running_loop().create_future()
 
-        for intento in range(2):
-            texto = pregunta if intento == 0 else "No le he entendido. ¿Sí o no?"
-            await self._decir_ahora(texto)
+        try:
+            for intento in range(2):
+                texto = pregunta if intento == 0 else "No le he entendido. ¿Sí o no?"
+                await self._decir_ahora(texto)
 
-            audio = await self._capturar_frase(
-                State.CONFIRMANDO, timeout=self.s.permissions.confirm_timeout_s
-            )
-            if audio.size == 0:
-                break  # se agotó el tiempo: no
+                captura = asyncio.create_task(
+                    self._capturar_frase(
+                        State.CONFIRMANDO, timeout=self.s.permissions.confirm_timeout_s
+                    )
+                )
+                terminadas, _ = await asyncio.wait(
+                    {captura, self._respuesta_externa},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
 
-            respuesta = (await self.transcriber.transcribir(audio)).strip()
-            self.bus.emit(EventType.FINAL_TRANSCRIPT, text=respuesta, kind="confirmacion")
+                if self._respuesta_externa in terminadas:
+                    captura.cancel()
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await captura
+                    decision = self._respuesta_externa.result()
+                    self._set_state(estado_previo)
+                    if not decision:
+                        await self._decir_ahora("De acuerdo, no lo hago.")
+                    return decision
 
-            decision = interpretar_respuesta(respuesta)
-            if decision is not None:
-                self._set_state(estado_previo)
-                if not decision:
-                    await self._decir_ahora("De acuerdo, no lo hago.")
-                return decision
+                audio = captura.result()
+                if audio.size == 0:
+                    break  # se agotó el tiempo: no
 
-        self._set_state(estado_previo)
-        await self._decir_ahora("Sin confirmación. No hago nada.")
-        return False
+                respuesta = (await self.transcriber.transcribir(audio)).strip()
+                self.bus.emit(EventType.FINAL_TRANSCRIPT, text=respuesta, kind="confirmacion")
+
+                decision = interpretar_respuesta(respuesta)
+                if decision is not None:
+                    self._set_state(estado_previo)
+                    if not decision:
+                        await self._decir_ahora("De acuerdo, no lo hago.")
+                    return decision
+
+            self._set_state(estado_previo)
+            await self._decir_ahora("Sin confirmación. No hago nada.")
+            return False
+        finally:
+            self._respuesta_externa = None

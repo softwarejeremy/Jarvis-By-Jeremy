@@ -316,6 +316,62 @@ class TestConfirmacionPorVoz:
 
         assert any("no lo hago" in f.lower() for f in tts.dicho)
 
+    async def test_el_hud_puede_autorizar_sin_voz(self, settings):
+        # Nadie habla nunca: si la respuesta del HUD no ganara la carrera,
+        # esto denegaría por timeout como en `test_el_silencio_deniega`.
+        core, _ = construir(settings, probabilidades=[0.0])
+        async with NucleoEnMarcha(core):
+            tarea = asyncio.create_task(core.confirmar_por_voz("¿Lo hago?"))
+            await esperar_hasta(lambda: core.confirmacion_pendiente)
+            assert core.responder_confirmacion(True) is True
+            resultado = await asyncio.wait_for(tarea, timeout=8)
+        assert resultado is True
+
+    async def test_el_hud_puede_denegar_sin_voz(self, settings):
+        core, _ = construir(settings, probabilidades=[0.0])
+        async with NucleoEnMarcha(core):
+            tarea = asyncio.create_task(core.confirmar_por_voz("¿Lo hago?"))
+            await esperar_hasta(lambda: core.confirmacion_pendiente)
+            core.responder_confirmacion(False)
+            resultado = await asyncio.wait_for(tarea, timeout=8)
+        assert resultado is False
+
+    async def test_el_hud_puede_ganar_durante_la_repregunta(self, settings):
+        # Habla, pero de forma ambigua: fuerza la segunda vuelta. El botón se
+        # pulsa mientras J.A.R.V.I.S. está repreguntando, no en la primera.
+        tts = FakeTTS()
+        core, _ = construir(
+            settings,
+            tts=tts,
+            probabilidades=self.HABLA_Y_CALLA,
+            transcriber=FakeTranscriber(["mmm no sé"]),
+        )
+        async with NucleoEnMarcha(core):
+            tarea = asyncio.create_task(core.confirmar_por_voz("¿Lo hago?"))
+            await esperar_hasta(lambda: any("¿Sí o no?" in f for f in tts.dicho))
+            core.responder_confirmacion(True)
+            resultado = await asyncio.wait_for(tarea, timeout=8)
+        assert resultado is True
+
+    async def test_responder_confirmacion_sin_nada_pendiente_no_revienta(self, settings):
+        core, eventos = construir(settings)
+        await core.start()
+        try:
+            assert core.responder_confirmacion(True) is False
+        finally:
+            await core.stop()
+        assert any("pendiente" in e.data.get("message", "") for e in eventos)
+
+    async def test_confirmacion_pendiente_se_limpia_al_terminar(self, settings):
+        core, _ = construir(
+            settings,
+            probabilidades=self.HABLA_Y_CALLA,
+            transcriber=FakeTranscriber(["sí"]),
+        )
+        async with NucleoEnMarcha(core):
+            await asyncio.wait_for(core.confirmar_por_voz("¿Lo hago?"), timeout=8)
+        assert core.confirmacion_pendiente is False
+
 
 class TestParadaLimpia:
     async def test_stop_es_idempotente(self, settings):

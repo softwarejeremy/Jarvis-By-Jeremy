@@ -497,6 +497,8 @@ body {
                   letter-spacing: 0.16em; color: var(--ambar); font-family: var(--mono); }
 .permiso-texto { margin: 0; font-size: 0.92rem; line-height: 1.5; }
 .permiso-nota  { margin: 6px 0 0; font-size: 0.78rem; color: var(--texto-tenue); }
+.permiso-botones { display: flex; gap: 8px; margin-top: 10px; }
+.permiso-botones .boton { padding: 6px 20px; font-size: 0.82rem; }
 
 /* ── Barras de desplazamiento ──────────────────────────────── */
 .conversacion::-webkit-scrollbar,
