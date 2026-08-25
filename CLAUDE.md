@@ -1,8 +1,64 @@
 # CLAUDE.md
 
-Memoria e instrucciones de proyecto para trabajar en J.A.R.V.I.S. (Cositas-Skypie).
-La arquitectura y el uso están en `README.md`; este archivo es para lo que el
-código por sí solo no cuenta.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+J.A.R.V.I.S. (Cositas-Skypie): asistente de voz personal construido sobre el
+Claude Agent SDK. El uso de cara al usuario está en `README.md`; este archivo
+es para lo que hace falta para desarrollar aquí — comandos, arquitectura, y lo
+que el código por sí solo no cuenta.
+
+## Comandos
+
+```bash
+pip install -e ".[voice,dev,web,bandeja]"   # entorno de desarrollo completo
+pytest -q                                    # suite completa
+pytest tests/test_core.py -v                 # un archivo
+pytest tests/test_core.py::TestNoSeQuedaColgado::test_el_vigilante_rescata_un_estado_atascado  # un test suelto
+ruff check jarvis tests                      # único lint (sin ruff format, ver Reglas globales)
+python -m jarvis --diag                      # diagnóstico (pensado para Windows real)
+python -m jarvis --texto --demo              # probar el flujo sin clave ni audio
+python -m jarvis --web --sin-navegador       # HUD web sin abrir pestaña
+```
+
+La CI (`.github/workflows/ci.yml`) instala sólo
+`pip install -e ".[dev,web]" numpy faster-whisper onnxruntime` — no `voice`
+completo, ni `elevenlabs`, ni `windows` — y corre `ruff check` + `pytest -q`
+en Python 3.10, 3.11 y 3.12. Cualquier cambio tiene que pasar en verde con ese
+subconjunto de extras, aunque en local se use `voice` entero.
+
+## Arquitectura
+
+El núcleo (`jarvis/core/core.py`, una máquina de estados) sólo publica eventos
+a través de `EventBus` (`jarvis/events.py`); no sabe si lo está mirando una
+terminal, el HUD web o un test. Por eso se pudo añadir la interfaz web y la
+bandeja del sistema sin tocar la lógica central, y por eso los tests recorren
+el ciclo completo sin micrófono real (dobles en `tests/conftest.py`).
+
+Piezas que sólo se entienden leyendo más de un archivo a la vez:
+
+- **Permisos** (`jarvis/core/permissions.py`): tres barreras en cascada —
+  rutas permitidas (`writable_paths`) deniegan sin preguntar → confirmación
+  hablada → el silencio deniega por timeout.
+- **TTS** (`jarvis/audio/tts/{base,edge,sapi,elevenlabs}.py`): `crear_motor()`
+  decide el motor por `settings.tts.engine`, con caída silenciosa a
+  `edge-tts` si falta la key de ElevenLabs o `pywin32` en Windows.
+- **Pausa** (`jarvis/core/core.py`): `PAUSADO` se guarda como bool aparte
+  (`self._pausado`), no sólo como `State` — cualquier "vuelta a reposo" pasa
+  por `_a_reposo()` en vez de fijar `State.DORMIDO` a pelo, para no
+  des-pausar el micrófono sin querer desde otro camino del código.
+- **Instancia única** (`jarvis/instancia.py`): cerrojo por socket TCP
+  (127.0.0.1:8764), no PID file — en Windows no hay forma segura de
+  comprobar si un PID sigue vivo sin arriesgarse a matarlo.
+- **Bandeja** (`jarvis/ui/bandeja.py`): tres hilos separados a propósito
+  (loop de asyncio / bucle de mensajes de pystray / executor para repintar),
+  cruzados con `call_soon_threadsafe` + `create_task`, nunca bloqueando con
+  `.result()` — así ni el frame de audio de 32 ms ni el bucle de pystray se
+  quedan esperando al otro.
+- **Arranque y cierre** (`jarvis/main.py`): `_correr_hasta_el_final()`
+  sustituye a `asyncio.run()` porque la limpieza final de tareas del propio
+  `asyncio.run()` no está acotada en tiempo — hace falta un límite en dos
+  capas distintas (el `finally` de `_arrancar_todo` y el cierre del loop),
+  no sólo una, o un Ctrl+C puede dejar la terminal colgada.
 
 ## Contexto del proyecto
 
@@ -72,10 +128,3 @@ código por sí solo no cuenta.
 - **Verificación visual**: cuando un cambio toca el HUD web o el icono de la
   bandeja, no basta con los tests — generar una imagen real (Playwright para
   el HUD, una hoja de contacto con Pillow para el icono) y mirarla.
-
-## Comandos útiles
-
-- `pytest -q` — suite completa (rápida, ronda los 20 s).
-- `ruff check jarvis tests` — estilo y errores estáticos. No se corre
-  `ruff format`: el proyecto alinea tablas y comentarios a mano a propósito.
-- `python -m jarvis --diag` — pensado para correr en el Windows real de Jeremy.
