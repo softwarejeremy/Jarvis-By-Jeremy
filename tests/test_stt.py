@@ -45,21 +45,40 @@ def simular_ct2(monkeypatch, *, gpus=0, soporte=None, cuenta_falla=False):
     monkeypatch.setattr(ctranslate2, "get_cuda_device_count", get_cuda_device_count)
 
 
-def simular_whisper(monkeypatch, fallan=()):
-    """Sustituye a WhisperModel. Devuelve la lista de intentos realizados."""
+def simular_whisper(monkeypatch, fallan=(), fallan_transcribir=(), segmentos=()):
+    """Sustituye a WhisperModel. Devuelve la lista de intentos realizados.
+
+    `fallan` reproduce un fallo al construir el modelo (lo que ya vivía aquí).
+    `fallan_transcribir` reproduce el caso real de Jeremy: la construcción
+    tiene éxito y sólo la primera transcripción revienta (cuBLAS a medio
+    instalar, por ejemplo) — un fallo que `cargar()` no puede ver.
+    """
     import faster_whisper
 
     intentos: list[tuple[str, str]] = []
 
+    class _Segmento:
+        def __init__(self, texto: str) -> None:
+            self.text = texto
+
     class FakeWhisper:
         def __init__(self, size, device=None, compute_type=None, **_kw):
             del size
+            self._device = device
+            self._compute = compute_type
             intentos.append((device, compute_type))
             if (device, compute_type) in fallan:
                 raise ValueError(
                     f"Requested {compute_type} compute type, but the target device "
                     "or backend do not support efficient computation."
                 )
+
+        def transcribe(self, *_a, **_kw):
+            if (self._device, self._compute) in fallan_transcribir:
+                raise RuntimeError(
+                    "Library cublas64_12.dll is not found or cannot be loaded"
+                )
+            return [_Segmento(s) for s in segmentos], None
 
     monkeypatch.setattr(faster_whisper, "WhisperModel", FakeWhisper)
     return intentos
@@ -181,3 +200,55 @@ class TestCargaConRepliegue:
         # El diagnóstico lo usa para sugerir instalar cuDNN.
         assert t.gpu_detectada
         assert t.device == "cpu"
+
+
+class TestTranscribirConRepliegue:
+    """El fallo real de Jeremy: un cuBLAS a medio instalar deja construir el
+    modelo en GPU sin protestar, y sólo revienta al transcribir de verdad
+    ("Library cublas64_12.dll is not found..."). El repliegue de `cargar()`
+    no lo detecta porque, en ese momento, la carga sí tuvo éxito."""
+
+    async def test_si_la_gpu_falla_transcribiendo_se_replega_a_cpu(self, settings, monkeypatch):
+        simular_ct2(monkeypatch, gpus=1, soporte={"cpu": CPU_REAL, "cuda": GPU_REAL})
+        intentos = simular_whisper(
+            monkeypatch, fallan_transcribir=[("cuda", "float16")], segmentos=["hola"]
+        )
+
+        t = Transcriber(settings)
+        texto = await t.transcribir(_audio())
+
+        assert texto == "hola"
+        assert (t.device, t.compute_type) == ("cpu", "int8")
+        assert intentos == [("cuda", "float16"), ("cpu", "int8")]
+        assert t.motivo_repliegue and "cublas" in t.motivo_repliegue.lower()
+
+    async def test_una_segunda_frase_ya_no_repliega_dos_veces(self, settings, monkeypatch):
+        simular_ct2(monkeypatch, gpus=1, soporte={"cpu": CPU_REAL, "cuda": GPU_REAL})
+        intentos = simular_whisper(
+            monkeypatch, fallan_transcribir=[("cuda", "float16")], segmentos=["hola"]
+        )
+
+        t = Transcriber(settings)
+        await t.transcribir(_audio())
+        await t.transcribir(_audio())
+
+        # Ya replegado a CPU, la segunda frase no debe volver a construir el
+        # modelo de GPU: ya se sabe que no funciona.
+        assert intentos == [("cuda", "float16"), ("cpu", "int8")]
+
+    async def test_si_tambien_falla_en_cpu_lanza(self, settings, monkeypatch):
+        # Sin GPU de por medio: si hasta el repliegue falla transcribiendo,
+        # no hay adónde más ir. Esconder el error dejaría a J.A.R.V.I.S. mudo
+        # sin que nadie supiera por qué.
+        simular_ct2(monkeypatch, gpus=0)
+        simular_whisper(monkeypatch, fallan_transcribir=[("cpu", "int8")])
+
+        t = Transcriber(settings)
+        with pytest.raises(RuntimeError):
+            await t.transcribir(_audio())
+
+
+def _audio():
+    import numpy as np
+
+    return np.zeros(1600, dtype=np.float32)

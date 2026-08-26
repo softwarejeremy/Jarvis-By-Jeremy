@@ -153,6 +153,29 @@ class Transcriber:
         self.cargar()
         assert self._modelo is not None
 
+        try:
+            return self._transcribir_con_modelo_cargado(audio)
+        except Exception as exc:  # noqa: BLE001 - probamos el repliegue a CPU
+            if (self.device, self.compute_type) == _REPLIEGUE:
+                raise  # ya estábamos en el repliegue; no hay adónde más ir
+
+            # Un cuBLAS o cuDNN a medio instalar puede dejar construir el
+            # modelo sin protestar y sólo reventar en la primera transcripción
+            # real ("Library cublas64_12.dll is not found..."): el repliegue
+            # de `cargar()` no lo detecta porque ahí la carga sí tuvo éxito.
+            self.motivo_repliegue = (
+                f"{self.device}/{self.compute_type} falló transcribiendo "
+                f"({_resumir(exc)}); se usa {_REPLIEGUE[0]}/{_REPLIEGUE[1]}."
+            )
+            from faster_whisper import WhisperModel
+
+            self.device, self.compute_type = _REPLIEGUE
+            self._modelo = WhisperModel(
+                self._s.model_size, device=_REPLIEGUE[0], compute_type=_REPLIEGUE[1]
+            )
+            return self._transcribir_con_modelo_cargado(audio)
+
+    def _transcribir_con_modelo_cargado(self, audio: np.ndarray) -> str:
         segmentos, _info = self._modelo.transcribe(
             audio,
             language=self._s.language,
