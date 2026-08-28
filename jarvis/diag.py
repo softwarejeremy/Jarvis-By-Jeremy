@@ -221,6 +221,7 @@ def _probar_microfono(transcriber=None, segundos: float = 3.0) -> None:  # noqa:
     # latencia real sobre voz real y enseña si de verdad le entiende.
     if transcriber is None or pico < 0.01:
         return
+    motivo_antes = getattr(transcriber, "motivo_repliegue", None)
     try:
         t0 = time.perf_counter()
         texto = transcriber._transcribir_sync(señal)
@@ -228,6 +229,19 @@ def _probar_microfono(transcriber=None, segundos: float = 3.0) -> None:  # noqa:
     except Exception as exc:  # noqa: BLE001
         console.print(f"  {FALLO} Fallo al transcribir: {exc}")
         return
+
+    # A diferencia del repliegue al cargar el modelo, éste sólo se ve aquí:
+    # la GPU aceptó construir el modelo pero reventó en la primera
+    # transcripción real (típico de cuBLAS a medio instalar). El aviso de
+    # `_probar_transcripcion` no lo habría visto porque en ese momento la
+    # carga sí había ido bien.
+    motivo_ahora = getattr(transcriber, "motivo_repliegue", None)
+    if motivo_ahora and motivo_ahora != motivo_antes:
+        console.print(
+            f"  {AVISO} {motivo_ahora}\n"
+            "      Pruebe [cyan]pip install nvidia-cublas-cu12 nvidia-cudnn-cu12[/cyan] "
+            "y vuelva a intentarlo."
+        )
 
     if texto:
         console.print(f'  {OK} Le he entendido: [bold]«{texto}»[/bold]  [dim]({ms:.0f} ms)[/dim]')
@@ -314,9 +328,12 @@ def _probar_transcripcion():  # noqa: ANN201 - devuelve el Transcriber ya cargad
 
     if t.gpu_detectada and t.device == "cpu":
         console.print(
-            f"  {AVISO} Tiene una GPU NVIDIA que no se está aprovechando. "
-            "Suele faltar cuDNN 9 para CUDA 12;\n"
-            "      instalándolo iría bastante más rápido y podría usar un modelo mayor."
+            f"  {AVISO} Tiene una GPU NVIDIA que no se está aprovechando.\n"
+            "      Pruebe [cyan]pip install nvidia-cublas-cu12 nvidia-cudnn-cu12[/cyan] "
+            "y vuelva a arrancar:\n"
+            "      son más ligeros que el CUDA Toolkit completo y J.A.R.V.I.S. ya sabe\n"
+            "      encontrar sus DLL solo. Si aun así no arranca en GPU, instale el\n"
+            "      CUDA Toolkit completo de NVIDIA (cuDNN 9 para CUDA 12)."
         )
     elif not t.gpu_detectada and s.stt.model_size in ("medium", "large-v3"):
         console.print(

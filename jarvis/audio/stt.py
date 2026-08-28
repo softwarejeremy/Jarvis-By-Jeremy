@@ -19,17 +19,50 @@ Por eso aquí se verifica dos veces: primero se le pregunta a ctranslate2 qué
 precisiones soporta de verdad ese dispositivo, y después, si aun así la carga
 falla, se replega a CPU. Un asistente que transcribe despacio sirve; uno que no
 transcribe, no.
+
+## El caso de "cublas64_12.dll is not found"
+
+Con una GPU NVIDIA real, cuDNN 9 y cuBLAS instalados vía pip
+(`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`) en vez del CUDA Toolkit completo,
+la carga del modelo puede tener éxito y aun así reventar en la primera
+transcripción real: `ctranslate2` en Windows sólo añade **su propia** carpeta
+al buscador de DLLs (`os.add_dll_directory`), no las de esos paquetes de
+pip, así que Windows no encuentra `cublas64_12.dll` aunque esté instalado.
+`_registrar_dll_cuda_en_windows()` se lo dice a mano, antes de intentar cargar
+nada — sin eso, la única alternativa real era instalar el CUDA Toolkit
+completo de NVIDIA (varios GB) sólo para tener las DLLs en el PATH del
+sistema.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import importlib
+import os
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import numpy as np
 
     from ..config import Settings
+
+
+def _registrar_dll_cuda_en_windows() -> None:
+    """Añade al buscador de DLLs las carpetas de cuBLAS/cuDNN instaladas vía
+    pip, si las hay. No hace nada fuera de Windows ni si no están instaladas.
+    """
+    if sys.platform != "win32":
+        return
+    anadir_directorio_dll = getattr(os, "add_dll_directory", None)
+    if anadir_directorio_dll is None:
+        return
+    for paquete in ("nvidia.cublas.lib", "nvidia.cudnn.lib"):
+        with contextlib.suppress(Exception):
+            modulo = importlib.import_module(paquete)
+            anadir_directorio_dll(str(Path(modulo.__file__).parent))
 
 # Precisiones aceptables por dispositivo, de mejor a peor. En GPU manda la
 # velocidad; en CPU, int8 es el punto dulce entre rapidez y calidad.
@@ -117,6 +150,7 @@ class Transcriber:
         if self._modelo is not None:
             return
 
+        _registrar_dll_cuda_en_windows()
         from faster_whisper import WhisperModel
 
         self.gpu_detectada = hay_gpu()

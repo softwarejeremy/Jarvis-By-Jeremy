@@ -13,9 +13,17 @@ todas las combinaciones sin necesitar una GPU.
 
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
-from jarvis.audio.stt import Transcriber, hay_gpu, resolver_dispositivo
+from jarvis.audio.stt import (
+    Transcriber,
+    _registrar_dll_cuda_en_windows,
+    hay_gpu,
+    resolver_dispositivo,
+)
 
 # Lo que un CPU normal soporta de verdad. Nótese la ausencia de float16: pedirlo
 # es justo lo que provocaba el error.
@@ -252,3 +260,78 @@ def _audio():
     import numpy as np
 
     return np.zeros(1600, dtype=np.float32)
+
+
+def _instalar_paquete_falso(monkeypatch: pytest.MonkeyPatch, nombre: str, *, ruta: str):
+    """Simula un paquete de pip instalado, con `__file__` en `ruta`."""
+    modulo = types.ModuleType(nombre)
+    modulo.__file__ = ruta
+    monkeypatch.setitem(sys.modules, nombre, modulo)
+
+
+class TestRegistrarDllCudaEnWindows:
+    """El fallo real de Jeremy, capa 2: incluso con `nvidia-cublas-cu12` y
+    `nvidia-cudnn-cu12` instalados vía pip, `ctranslate2` en Windows sólo
+    añade su propia carpeta al buscador de DLL, no las de esos paquetes."""
+
+    def test_fuera_de_windows_no_hace_nada(self, monkeypatch):
+        # Con los paquetes "instalados" de mentira: si el filtro de
+        # plataforma no cortara aquí, sí que habría algo que registrar.
+        monkeypatch.setattr(sys, "platform", "linux")
+        llamadas = []
+        monkeypatch.setattr(
+            "os.add_dll_directory", lambda ruta: llamadas.append(ruta), raising=False
+        )
+        _instalar_paquete_falso(
+            monkeypatch, "nvidia.cublas.lib", ruta="/falso/cublas/lib/__init__.py"
+        )
+        _instalar_paquete_falso(
+            monkeypatch, "nvidia.cudnn.lib", ruta="/falso/cudnn/lib/__init__.py"
+        )
+
+        _registrar_dll_cuda_en_windows()
+
+        assert llamadas == []
+
+    def test_en_windows_anade_cublas_y_cudnn(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "win32")
+        llamadas = []
+        monkeypatch.setattr(
+            "os.add_dll_directory", lambda ruta: llamadas.append(ruta), raising=False
+        )
+        _instalar_paquete_falso(
+            monkeypatch, "nvidia.cublas.lib", ruta="/falso/cublas/lib/__init__.py"
+        )
+        _instalar_paquete_falso(
+            monkeypatch, "nvidia.cudnn.lib", ruta="/falso/cudnn/lib/__init__.py"
+        )
+
+        _registrar_dll_cuda_en_windows()
+
+        assert sorted(llamadas) == ["/falso/cublas/lib", "/falso/cudnn/lib"]
+
+    def test_en_windows_sin_los_paquetes_no_revienta(self, monkeypatch):
+        # Fuerza la ausencia con sys.modules en vez de confiar en que este
+        # sandbox no los tenga instalados de verdad.
+        monkeypatch.setattr(sys, "platform", "win32")
+        llamadas = []
+        monkeypatch.setattr(
+            "os.add_dll_directory", lambda ruta: llamadas.append(ruta), raising=False
+        )
+        monkeypatch.setitem(sys.modules, "nvidia.cublas.lib", None)
+        monkeypatch.setitem(sys.modules, "nvidia.cudnn.lib", None)
+
+        _registrar_dll_cuda_en_windows()  # no debe lanzar
+
+        assert llamadas == []
+
+    def test_sin_add_dll_directory_no_revienta(self, monkeypatch):
+        # Python en Linux nunca ha tenido `os.add_dll_directory`; se fuerza su
+        # ausencia explícitamente para no depender de esa casualidad.
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.delattr("os.add_dll_directory", raising=False)
+        _instalar_paquete_falso(
+            monkeypatch, "nvidia.cublas.lib", ruta="/falso/cublas/lib/__init__.py"
+        )
+
+        _registrar_dll_cuda_en_windows()  # no debe lanzar

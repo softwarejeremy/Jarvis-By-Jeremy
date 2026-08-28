@@ -438,9 +438,18 @@ GPU y no pudo. Desde la versión actual esto se detecta solo y cae a CPU, avisá
 aun así aparece, fuerza CPU poniendo `device = "cpu"` en la sección `[stt]` de
 `config.toml`.
 
-**Tengo GPU NVIDIA pero va en CPU** → Falta cuDNN 9 para CUDA 12, que faster-whisper
-necesita y no se instala con pip. Funciona igual en CPU, sólo más despacio; instalándolo
-ganarías velocidad y podrías subir a `stt.model_size = "medium"`, más preciso en español.
+**Tengo GPU NVIDIA pero va en CPU**, o **"Library cublas64_12.dll is not found or cannot
+be loaded"** al transcribir → Falta cuBLAS/cuDNN 9 para CUDA 12. Antes de instalar el CUDA
+Toolkit completo de NVIDIA (varios GB), prueba lo más ligero:
+
+```powershell
+pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+```
+
+J.A.R.V.I.S. ya sabe encontrar sus DLL solo (Windows no las busca ahí por su cuenta). Si
+aun así no arranca en GPU, hace falta el CUDA Toolkit completo. Mientras tanto funciona
+igual en CPU, sólo más despacio; con GPU podrías subir a `stt.model_size = "medium"`, más
+preciso en español.
 
 **Se queda en «transcribiendo» y no sale** → Casi siempre es la primera vez que
 transcribe y está **descargando el modelo** (unos 500 MB), que se ve igual que un
