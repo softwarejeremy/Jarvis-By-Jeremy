@@ -28,6 +28,7 @@ from . import instancia
 from .config import Settings, load_settings
 from .core.agent import Agent, DemoAgent
 from .core.core import JarvisCore
+from .core.historial import Historial
 from .core.memory import Memory
 from .core.permissions import PermissionGuard
 from .events import EventBus
@@ -117,6 +118,10 @@ def _construir(args: argparse.Namespace, s: Settings, bus: EventBus):  # noqa: A
 
     # ── cerebro ─────────────────────────────────────────────────────────
     memoria = Memory(s.memory_dir)
+
+    # Se escucha aquí y no en el servidor web para que quede registro haya o
+    # no HUD mirando: el bus es la fuente de verdad de todo el proyecto.
+    Historial(s.data_dir / "conversaciones").escuchar(bus)
 
     # El núcleo aún no existe, pero el guardián de permisos necesita poder
     # preguntarle por voz. Se resuelve con una indirección: el guardián llama

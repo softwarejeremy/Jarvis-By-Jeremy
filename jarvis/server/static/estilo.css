@@ -250,6 +250,27 @@ body { display: flex; flex-direction: column; }
   color: var(--texto-tenue);
 }
 
+.cabecera-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.cabecera-panel .titulo-panel { margin-bottom: 0; }
+
+.selector-dias {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  padding: 4px 8px;
+  border: 1px solid var(--borde);
+  background: rgba(6, 4, 2, 0.6);
+  color: var(--texto-tenue);
+  cursor: pointer;
+}
+.selector-dias:focus { border-color: var(--oro); color: var(--texto); outline: none; }
+.selector-dias[hidden] { display: none; }
+
 /* ── Reactor: instrumento radial, no tarjeta ──────────────────────────── */
 .panel-reactor { align-items: center; justify-content: center; gap: 6px; background: none; }
 .panel-reactor::before { display: none; }

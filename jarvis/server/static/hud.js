@@ -36,6 +36,7 @@ const el = {
   btnMovilCerrar: $("btn-movil-cerrar"),
   movilQr: $("movil-qr"),
   movilUrl: $("movil-url"),
+  selectorDias: $("selector-dias"),
 };
 
 // Qué decirle al usuario en cada estado. Un HUD que sólo muestra el
@@ -55,6 +56,9 @@ let socket = null;
 let reintento = 1000;
 let turnoJarvis = null;   // burbuja en curso, para ir añadiendo el streaming
 let hayMicrofono = true;  // lo confirma /api/estado al arrancar
+let turnosEnVivo = [];    // espejo de lo que se ha pintado en vivo, para
+                          // poder volver aquí tras mirar un día pasado
+let diaViendo = null;     // null = en directo; si no, el día que se muestra
 
 /* ── Conexión ──────────────────────────────────────────────── */
 function conectar() {
@@ -194,20 +198,26 @@ function pintarPausa(pausado) {
 
 // Llega cada vez que se conecta un WebSocket, no sólo al arrancar: recargar
 // la página o entrar desde un segundo dispositivo repone la conversación en
-// vez de dejarla en blanco. Repintar entero es más simple que llevar la
-// cuenta de qué turnos ya están puestos, y no duplica nada porque siempre
-// parte de cero.
+// vez de dejarla en blanco.
 function pintarHistorial(turnos) {
+  turnosEnVivo = turnos.slice();
   turnoJarvis = null;
+  if (diaViendo === null) renderTurnos(turnosEnVivo);
+}
+
+// Repintar entero es más simple que llevar la cuenta de qué turnos ya están
+// puestos, y no duplica nada porque siempre parte de cero. La usan tanto el
+// directo (pintarHistorial/anadirTurno) como el selector de días pasados.
+function renderTurnos(turnos) {
   if (turnos.length === 0) {
     el.conversacion.innerHTML = '<p class="vacio">Todavía no habéis hablado.</p>';
     return;
   }
   el.conversacion.innerHTML = "";
-  for (const turno of turnos) anadirTurno(turno.quien, turno.texto);
+  for (const turno of turnos) renderTurno(turno.quien, turno.texto);
 }
 
-function anadirTurno(quien, texto) {
+function renderTurno(quien, texto) {
   if (el.conversacion.querySelector(".vacio")) el.conversacion.innerHTML = "";
 
   const turno = document.createElement("div");
@@ -227,9 +237,20 @@ function anadirTurno(quien, texto) {
   return turno;
 }
 
+// Registra el turno en el espejo en vivo, y lo pinta salvo que se esté
+// mirando un día pasado —ahí el directo sigue corriendo por detrás, sólo no
+// se ve, y se repone entero al volver a "en directo".
+function anadirTurno(quien, texto) {
+  if (quien === "usuario") turnosEnVivo.push({ quien, texto });
+  if (diaViendo !== null) return null;
+  return renderTurno(quien, texto);
+}
+
 function escribirDelta(texto) {
+  if (diaViendo !== null) return;
   if (!turnoJarvis) {
     turnoJarvis = anadirTurno("jarvis", "");
+    if (!turnoJarvis) return;
     turnoJarvis.classList.add("escribiendo");
   }
   turnoJarvis.querySelector(".dicho").textContent += texto;
@@ -238,10 +259,60 @@ function escribirDelta(texto) {
 
 function cerrarTurno() {
   if (turnoJarvis) {
+    turnosEnVivo.push({
+      quien: "jarvis",
+      texto: turnoJarvis.querySelector(".dicho").textContent,
+    });
     turnoJarvis.classList.remove("escribiendo");
     turnoJarvis = null;
   }
 }
+
+/* ── Días anteriores ───────────────────────────────────────── */
+async function cargarDiasHistorial() {
+  try {
+    const r = await fetch("/api/conversaciones");
+    const datos = await r.json();
+    pintarSelectorDias(datos.dias || []);
+  } catch (e) {
+    // Sin días que ofrecer, el selector se queda oculto.
+  }
+}
+
+function pintarSelectorDias(dias) {
+  if (dias.length === 0) {
+    el.selectorDias.hidden = true;
+    return;
+  }
+  el.selectorDias.innerHTML = '<option value="">En directo</option>';
+  for (const dia of dias) {
+    const opcion = document.createElement("option");
+    opcion.value = dia;
+    opcion.textContent = dia;
+    el.selectorDias.append(opcion);
+  }
+  el.selectorDias.hidden = false;
+}
+
+el.selectorDias.addEventListener("change", async () => {
+  const dia = el.selectorDias.value;
+  if (!dia) {
+    diaViendo = null;
+    el.campo.disabled = false;
+    renderTurnos(turnosEnVivo);
+    return;
+  }
+
+  diaViendo = dia;
+  el.campo.disabled = true;
+  try {
+    const r = await fetch(`/api/conversaciones/${dia}`);
+    const datos = await r.json();
+    renderTurnos(datos.turnos || []);
+  } catch (e) {
+    registrar("No se pudo cargar esa conversación.", "error");
+  }
+});
 
 function registrar(mensaje, clase) {
   if (!mensaje) return;
@@ -637,4 +708,5 @@ fetch("/api/estado")
 
 cargarMemoria();
 cargarAccesoMovil();
+cargarDiasHistorial();
 conectar();

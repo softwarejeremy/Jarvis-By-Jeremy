@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from datetime import date
 
 import numpy as np
 import pytest
@@ -20,6 +21,7 @@ from jarvis.audio.player import NullPlayer
 from jarvis.audio.stt import FakeTranscriber
 from jarvis.audio.wakeword import NullWakeWord
 from jarvis.core.core import JarvisCore
+from jarvis.core.historial import Historial
 from jarvis.core.memory import CATEGORIAS, Memory
 from jarvis.events import EventType
 from jarvis.server.app import HISTORIAL_MAXLEN, _atender, _atender_audio, crear_app
@@ -44,6 +46,10 @@ def construir_core(settings, *, mic=None):
 @pytest.fixture
 def cliente(settings):
     core = construir_core(settings)
+    # En producción lo escucha main.py, no el servidor (Fase C: el registro
+    # vive en disco y sobrevive al reinicio). Aquí se conecta a mano, igual
+    # que main.py, para poder probar el servidor sin arrancar todo el resto.
+    Historial(settings.data_dir / "conversaciones").escuchar(core.bus)
     with fastapi_testclient.TestClient(crear_app(core)) as c:
         c.core = core
         yield c
@@ -107,6 +113,25 @@ class TestHistorial:
     """Reponer la conversación al conectar: recargar, o entrar desde otro
     dispositivo, no debe dejar el HUD en blanco a media charla."""
 
+    def test_no_mezcla_turnos_de_otro_dia(self, cliente, settings):
+        # Sin separador visual de por medio, mezclar "ayer" con "en directo"
+        # confundiría más de lo que ayuda; para eso está el selector de días.
+        from datetime import date, timedelta
+
+        ayer = (date.today() - timedelta(days=1)).isoformat()
+        archivo = settings.data_dir / "conversaciones" / f"{ayer}.jsonl"
+        archivo.write_text(
+            '{"hora": "09:00:00", "quien": "usuario", "texto": "de ayer"}\n',
+            encoding="utf-8",
+        )
+        cliente.core.bus.emit(EventType.FINAL_TRANSCRIPT, text="de hoy")
+
+        with cliente.websocket_connect("/ws") as ws:
+            ws.receive_json()
+            historial = ws.receive_json()
+
+        assert [t["texto"] for t in historial["data"]["turnos"]] == ["de hoy"]
+
     def test_arranca_vacio(self, cliente):
         with cliente.websocket_connect("/ws") as ws:
             ws.receive_json()  # el estado inicial
@@ -122,7 +147,10 @@ class TestHistorial:
             ws.receive_json()  # el estado inicial
             historial = ws.receive_json()
 
-        assert historial["data"]["turnos"] == [
+        # El registro en disco añade la hora (Fase C); aquí sólo importa quién
+        # dijo qué, y en qué orden.
+        turnos = [{"quien": t["quien"], "texto": t["texto"]} for t in historial["data"]["turnos"]]
+        assert turnos == [
             {"quien": "usuario", "texto": "hola"},
             {"quien": "jarvis", "texto": "¿En qué le ayudo?"},
         ]
@@ -146,7 +174,8 @@ class TestHistorial:
             ws.receive_json()
             historial = ws.receive_json()
 
-        assert {"quien": "usuario", "texto": "qué hora es"} in historial["data"]["turnos"]
+        turnos = [{"quien": t["quien"], "texto": t["texto"]} for t in historial["data"]["turnos"]]
+        assert {"quien": "usuario", "texto": "qué hora es"} in turnos
 
     def test_las_confirmaciones_no_entran_en_el_historial(self, cliente):
         # Es la respuesta a un "¿lo autoriza?", no parte de la charla; ya
@@ -179,6 +208,49 @@ class TestHistorial:
         # Se descartan los más antiguos primero, no los más recientes.
         assert turnos[0]["texto"] == "mensaje 10"
         assert turnos[-1]["texto"] == f"mensaje {HISTORIAL_MAXLEN + 9}"
+
+
+class TestApiConversaciones:
+    """Días anteriores: el registro en disco (Fase C) se puede navegar desde
+    el HUD, no sólo reponerse al conectar."""
+
+    def test_sin_conversacion_no_hay_dias(self, cliente):
+        assert cliente.get("/api/conversaciones").json() == {"dias": []}
+
+    def test_lista_los_dias_con_conversacion(self, cliente, settings):
+        Historial(settings.data_dir / "conversaciones").registrar("usuario", "hola")
+
+        dias = cliente.get("/api/conversaciones").json()["dias"]
+
+        assert len(dias) == 1
+        assert dias[0] == date.today().isoformat()
+
+    def test_devuelve_los_turnos_de_un_dia(self, cliente, settings):
+        h = Historial(settings.data_dir / "conversaciones")
+        h.registrar("usuario", "hola")
+        h.registrar("jarvis", "¿En qué le ayudo?")
+        hoy = h.dias()[0]
+
+        turnos = cliente.get(f"/api/conversaciones/{hoy}").json()["turnos"]
+
+        assert [t["texto"] for t in turnos] == ["hola", "¿En qué le ayudo?"]
+
+    def test_un_dia_sin_registro_da_vacio(self, cliente):
+        assert cliente.get("/api/conversaciones/2020-01-01").json() == {"turnos": []}
+
+    def test_un_dia_con_formato_invalido_no_revienta(self, cliente):
+        assert cliente.get("/api/conversaciones/no-es-una-fecha").json() == {"turnos": []}
+
+    def test_la_validacion_del_dia_rechaza_recorridos_de_directorio(self):
+        # El "día" se usa tal cual para construir una ruta de archivo
+        # (Historial._archivo): sin esto, "../../etc/passwd" se colaría como
+        # recorrido de directorios en vez de rechazarse como formato inválido.
+        # Se prueba el patrón directamente: qué le llega exactamente a la ruta
+        # tras el enrutado de FastAPI/Starlette no es parte de este contrato.
+        from jarvis.server.app import _FORMATO_DIA_VALIDO
+
+        for peligroso in ("../../etc/passwd", "..%2F..%2Fetc", "2020-01-01/../../etc"):
+            assert not _FORMATO_DIA_VALIDO.fullmatch(peligroso), peligroso
 
 
 class TestApiMemoria:

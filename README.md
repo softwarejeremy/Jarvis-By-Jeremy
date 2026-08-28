@@ -150,7 +150,9 @@ Es el **mismo núcleo**: lo que digas por voz sale en la pantalla, y lo que escr
 en la pantalla lo contesta por voz. No son dos programas.
 
 Recargar la página, o entrar desde otro dispositivo a media conversación, no
-te deja con el HUD en blanco: repone los últimos turnos en cuanto conecta.
+te deja con el HUD en blanco: repone los turnos de hoy en cuanto conecta. La
+conversación queda registrada en disco día a día, y el desplegable sobre el
+panel de conversación deja repasar cualquier día anterior.
 
 **Desde el móvil**: al arrancar con `--web`, J.A.R.V.I.S. te imprime las dos
 direcciones, ya calculadas:
@@ -359,7 +361,8 @@ jarvis/
 │   ├── agent.py      Envoltura del Claude Agent SDK
 │   ├── personality.py El carácter de J.A.R.V.I.S.  ← edítalo a tu gusto
 │   ├── permissions.py Las tres barreras
-│   └── memory.py     Memoria persistente en Markdown
+│   ├── memory.py     Memoria persistente en Markdown
+│   └── historial.py  Registro de conversaciones, un JSONL por día
 ├── audio/
 │   ├── capture.py    Micrófono siempre abierto, con búfer de contexto
 │   ├── wakeword.py   "Hey Jarvis" (openWakeWord, local)

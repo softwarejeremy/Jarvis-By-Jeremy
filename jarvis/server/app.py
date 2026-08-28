@@ -15,7 +15,7 @@ import asyncio
 import contextlib
 import json
 import re
-from collections import deque
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -30,18 +30,19 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from ..core.historial import Historial
 from ..core.memory import CATEGORIAS, Memory
 from ..core.permissions import interpretar_respuesta
-from ..events import Event, EventType
+from ..events import EventType
 
 if TYPE_CHECKING:
     from ..core.core import JarvisCore
 
 ESTATICOS = Path(__file__).parent / "static"
 
-# Cuántos turnos se recuerdan para reponerlos al conectar. El historial vive
-# sólo en memoria del proceso —no en disco—, así que basta con acotarlo; no
-# hace falta paginarlo ni persistirlo.
+# Cuántos turnos se reponen al conectar. El registro completo vive en disco
+# (`jarvis/core/historial.py`) sin límite; esto sólo acota lo que se manda de
+# golpe por el WebSocket al abrir el HUD.
 HISTORIAL_MAXLEN = 80
 
 
@@ -53,6 +54,11 @@ class _PeticionOlvidar(BaseModel):
 # AAAA-MM-DD)_": es útil al abrir el archivo a mano, pero en el HUD, sin
 # renderizar Markdown, sólo se verían los guiones bajos crudos.
 _FECHA_ANOTADO = re.compile(r"\s*_\(anotado el [\d-]+\)_\s*$")
+
+# El día llega como parámetro de la URL y se usa para construir una ruta de
+# archivo (`Historial._archivo`): sin esta validación, algo como "../../etc"
+# se colaría como recorrido de directorios en vez de un nombre de archivo.
+_FORMATO_DIA_VALIDO = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def ip_local() -> str | None:
@@ -111,26 +117,9 @@ def crear_app(core: JarvisCore) -> FastAPI:
     app = FastAPI(title="J.A.R.V.I.S.", docs_url=None, redoc_url=None)
     app.mount("/estaticos", StaticFiles(directory=ESTATICOS), name="estaticos")
 
-    # Se alimenta del mismo bus que ya usa el resto del HUD: no hay un
-    # segundo camino por el que pueda perderse un turno.
-    historial: deque[dict[str, str]] = deque(maxlen=HISTORIAL_MAXLEN)
-
-    def _guardar_en_historial(evento: Event) -> None:
-        if evento.type is EventType.FINAL_TRANSCRIPT:
-            # La respuesta a un "¿lo autoriza?" no es parte de la charla.
-            if evento.data.get("kind") == "confirmacion":
-                return
-            texto = str(evento.data.get("text", "")).strip()
-            if texto:
-                historial.append({"quien": "usuario", "texto": texto})
-        elif evento.type is EventType.ASSISTANT_DONE:
-            # El evento ya trae la respuesta entera: no hace falta acumular
-            # los `assistant_delta` a mano.
-            texto = str(evento.data.get("text", "")).strip()
-            if texto:
-                historial.append({"quien": "jarvis", "texto": texto})
-
-    core.bus.on(_guardar_en_historial)
+    # El registro en sí lo escucha `main.py` (para que quede constancia haya
+    # o no HUD web mirando); aquí sólo se lee de vuelta.
+    historial = Historial(core.s.data_dir / "conversaciones")
 
     def _memoria_actual() -> dict[str, list[str]]:
         m = Memory(core.s.memory_dir)
@@ -172,6 +161,18 @@ def crear_app(core: JarvisCore) -> FastAPI:
     async def memoria_olvidar(peticion: _PeticionOlvidar):  # noqa: ANN202
         mensaje = Memory(core.s.memory_dir).olvidar(peticion.texto)
         return {"mensaje": mensaje, "memoria": _memoria_actual()}
+
+    @app.get("/api/conversaciones")
+    async def conversaciones_dias():  # noqa: ANN202
+        """Qué días hay conversación registrada, más reciente primero."""
+        return {"dias": historial.dias()}
+
+    @app.get("/api/conversaciones/{dia}")
+    async def conversaciones_del_dia(dia: str):  # noqa: ANN202
+        """Los turnos de un día. Uno sin registro o mal formado da vacío."""
+        if not _FORMATO_DIA_VALIDO.fullmatch(dia):
+            return {"turnos": []}
+        return {"turnos": historial.leer(dia)}
 
     @app.get("/api/movil")
     async def movil(request: Request):  # noqa: ANN202
@@ -217,9 +218,13 @@ def crear_app(core: JarvisCore) -> FastAPI:
                 default=_a_json,
             )
         )
+        # Sólo lo de hoy: mezclar turnos de ayer sin ningún separador visual
+        # de por medio confundiría más de lo que ayudaría. Para eso está el
+        # selector de días (`/api/conversaciones`).
+        turnos_de_hoy = historial.leer(date.today().isoformat(), limite=HISTORIAL_MAXLEN)
         await ws.send_text(
             json.dumps(
-                {"type": "historial", "data": {"turnos": list(historial)}},
+                {"type": "historial", "data": {"turnos": turnos_de_hoy}},
                 default=_a_json,
             )
         )

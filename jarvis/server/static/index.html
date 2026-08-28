@@ -110,7 +110,12 @@
 
   <!-- ── Conversación ──────────────────────────────────────── -->
   <section class="panel panel-conversacion">
-    <h2 class="titulo-panel">Conversación</h2>
+    <div class="cabecera-panel">
+      <h2 class="titulo-panel">Conversación</h2>
+      <select id="selector-dias" class="selector-dias" hidden>
+        <option value="">En directo</option>
+      </select>
+    </div>
     <div class="conversacion" id="conversacion">
       <p class="vacio">Todavía no habéis hablado.</p>
     </div>
