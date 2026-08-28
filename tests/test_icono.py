@@ -75,11 +75,14 @@ class TestDibujo:
         assert fila_central >= 8, "el anillo se desvanece al reducir"
 
     def test_el_nucleo_toma_el_color_del_estado(self):
+        # No se fija un matiz concreto (la paleta puede cambiar): se comprueba
+        # el mecanismo — el núcleo es el color del estado, aclarado un 45 %,
+        # tal y como hace `dibujar_reactor` — para cualquier estado.
         centro = 32
-        ambar = icono.dibujar_reactor("pensando", 64).load()[centro, centro]
-        verde = icono.dibujar_reactor("hablando", 64).load()[centro, centro]
-        assert ambar[0] > ambar[1] > ambar[2], "el ámbar debería tirar a rojo"
-        assert verde[1] > verde[0], "el verde debería dominar sobre el rojo"
+        for estado in ("pensando", "hablando", "dormido", "error"):
+            esperado = icono._aclarar(icono._a_rgb(icono.color_de(estado)), 0.45)
+            real = icono.dibujar_reactor(estado, 64).load()[centro, centro][:3]
+            assert real == esperado, estado
 
     def test_la_pausa_deja_el_nucleo_hueco(self):
         # La señal que sobrevive en escala de grises y para quien no distingue

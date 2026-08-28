@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#050a12">
+<meta name="theme-color" content="#0a0704">
 <title>J.A.R.V.I.S.</title>
 <link rel="stylesheet" href="/estaticos/estilo.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='%2338bdf8' stroke-width='8'/><circle cx='50' cy='50' r='16' fill='%2338bdf8'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='%23f0a83c' stroke-width='8'/><circle cx='50' cy='50' r='16' fill='%23f0a83c'/></svg>">
 <link rel="manifest" href="/estaticos/manifest.json">
 <link rel="apple-touch-icon" href="/estaticos-generados/icono-180.png">
 </head>
@@ -50,6 +50,32 @@
     <div class="reactor" id="reactor" data-estado="dormido">
       <svg viewBox="0 0 200 200" class="reactor-svg" aria-hidden="true">
         <circle class="anillo-exterior" cx="100" cy="100" r="88"/>
+        <g class="marcas">
+          <line x1="100" y1="6" x2="100" y2="24"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(15 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(30 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(45 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(60 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(75 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(90 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(105 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(120 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(135 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(150 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(165 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(180 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(195 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(210 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(225 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(240 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(255 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(270 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(285 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(300 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(315 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(330 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(345 100 100)"/>
+        </g>
         <circle class="anillo-giro"     cx="100" cy="100" r="76"/>
         <circle class="anillo-giro-inv" cx="100" cy="100" r="64"/>
         <g class="segmentos">
@@ -119,7 +145,9 @@
 <!-- ── Permiso ─────────────────────────────────────────────── -->
 <div class="permiso" id="permiso" hidden>
   <div class="permiso-caja">
-    <span class="permiso-icono" aria-hidden="true">⚠</span>
+    <span class="permiso-icono" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"/></svg>
+    </span>
     <div>
       <p class="permiso-titulo">Pide autorización</p>
       <p class="permiso-texto" id="permiso-texto"></p>

@@ -3,8 +3,8 @@
   "short_name": "J.A.R.V.I.S.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#050a12",
-  "theme_color": "#050a12",
+  "background_color": "#0a0704",
+  "theme_color": "#0a0704",
   "icons": [
     { "src": "/estaticos/icono.svg", "sizes": "any", "type": "image/svg+xml" }
   ]

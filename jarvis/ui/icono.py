@@ -42,14 +42,14 @@ if TYPE_CHECKING:  # pragma: no cover - sólo para los tipos
 # real: si alguien retoca la hoja de estilos, el icono y el HUD dejarían de
 # contar lo mismo del mismo estado y nadie se enteraría.
 COLOR_ESTADO: dict[str, str] = {
-    "dormido": "#2a5a7a",
-    "escuchando": "#38bdf8",
-    "transcribiendo": "#22d3ee",
-    "pensando": "#fbbf24",
-    "hablando": "#34d399",
-    "confirmando": "#e879f9",
-    "pausado": "#64748b",
-    "error": "#fb7185",
+    "dormido": "#6b4a24",
+    "escuchando": "#f0a83c",
+    "transcribiendo": "#ffcf70",
+    "pensando": "#e2792b",
+    "hablando": "#ffdca0",
+    "confirmando": "#cc4a1f",
+    "pausado": "#5c5346",
+    "error": "#ef5350",
 }
 
 # Un estado que no conocemos se pinta como el reposo: es lo menos alarmante.
