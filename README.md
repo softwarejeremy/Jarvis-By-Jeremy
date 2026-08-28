@@ -224,7 +224,10 @@ no estimadas:
 | Un día de uso intenso (~100 turnos) | **~$1.70** |
 
 Hay un tope de gasto por sesión (`max_budget_usd`, por defecto $2) que corta
-automáticamente, y el coste acumulado se muestra en pantalla en cada turno.
+automáticamente, y el coste acumulado se muestra en pantalla en cada turno. El HUD
+web además lleva la cuenta de **hoy**, sumando todas las sesiones del día — diez
+sesiones de $2 no se notarían mirando sólo el tope por sesión — y avisa en ámbar al
+acercarse al tope y en rojo al superarlo.
 
 Si quieres gastar menos, `model = "claude-sonnet-5"` en `config.toml` cuesta poco más de
 la mitad y para conversar va sobrado.
@@ -362,7 +365,8 @@ jarvis/
 │   ├── personality.py El carácter de J.A.R.V.I.S.  ← edítalo a tu gusto
 │   ├── permissions.py Las tres barreras
 │   ├── memory.py     Memoria persistente en Markdown
-│   └── historial.py  Registro de conversaciones, un JSONL por día
+│   ├── historial.py  Registro de conversaciones, un JSONL por día
+│   └── gasto.py      Gasto acumulado, por día
 ├── audio/
 │   ├── capture.py    Micrófono siempre abierto, con búfer de contexto
 │   ├── wakeword.py   "Hey Jarvis" (openWakeWord, local)

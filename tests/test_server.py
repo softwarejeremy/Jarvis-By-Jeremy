@@ -90,6 +90,31 @@ class TestApiEstado:
         with fastapi_testclient.TestClient(crear_app(core)) as c:
             assert c.get("/api/estado").json()["microfono"] is True
 
+    def test_incluye_el_presupuesto_configurado(self, cliente, settings):
+        assert cliente.get("/api/estado").json()["presupuesto_usd"] == settings.agent.max_budget_usd
+
+
+class TestApiGasto:
+    """El gasto de hoy, aparte del de la sesión en curso (Fase D)."""
+
+    def test_sin_gasto_todavia_da_cero(self, cliente):
+        datos = cliente.get("/api/gasto").json()
+        assert datos == {"sesion_usd": 0.0, "hoy_usd": 0.0, "mes_usd": 0.0}
+
+    def test_refleja_lo_registrado_por_gasto_py(self, cliente, settings):
+        from jarvis.core.gasto import Gasto
+        from jarvis.events import EventBus
+
+        bus = EventBus()
+        Gasto(settings.data_dir / "gasto.json").escuchar(bus)
+        bus.emit(EventType.COST_UPDATE, total_usd=0.0142)
+
+        assert cliente.get("/api/gasto").json()["hoy_usd"] == pytest.approx(0.0142)
+
+    def test_incluye_el_coste_de_la_sesion_en_curso(self, cliente):
+        cliente.core.coste_usd = 0.05
+        assert cliente.get("/api/gasto").json()["sesion_usd"] == pytest.approx(0.05)
+
 
 class TestWebSocket:
     def test_conecta_y_manda_el_estado_inicial(self, cliente):

@@ -27,6 +27,8 @@ const el = {
   modelo: $("modelo"),
   voz: $("voz"),
   coste: $("coste"),
+  indicadorHoy: $("indicador-hoy"),
+  costeHoy: $("coste-hoy"),
   permiso: $("permiso"),
   permisoTexto: $("permiso-texto"),
   btnPermisoSi: $("btn-permiso-si"),
@@ -59,6 +61,7 @@ let hayMicrofono = true;  // lo confirma /api/estado al arrancar
 let turnosEnVivo = [];    // espejo de lo que se ha pintado en vivo, para
                           // poder volver aquí tras mirar un día pasado
 let diaViendo = null;     // null = en directo; si no, el día que se muestra
+let presupuestoUsd = null; // agent.max_budget_usd; null si no hay tope
 
 /* ── Conexión ──────────────────────────────────────────────── */
 function conectar() {
@@ -156,6 +159,9 @@ function manejar({ type, data = {} }) {
 
     case "cost_update":
       el.coste.textContent = "$" + Number(data.total_usd || 0).toFixed(4);
+      // El total de hoy vive en el servidor (cruza reinicios y sesiones);
+      // no hay incremento que calcular aquí, así que se vuelve a pedir.
+      cargarGasto();
       break;
 
     case "error":
@@ -337,6 +343,32 @@ function registrar(mensaje, clase) {
   // El historial completo no aporta y acabaría comiendo memoria.
   while (el.actividad.children.length > 80) el.actividad.firstChild.remove();
   el.actividad.scrollTop = el.actividad.scrollHeight;
+}
+
+/* ── Gasto ─────────────────────────────────────────────────── */
+async function cargarGasto() {
+  try {
+    const r = await fetch("/api/gasto");
+    pintarGasto(await r.json());
+  } catch (e) {
+    // Sin el dato de hoy, el indicador se queda en $0.0000: no es mentira,
+    // sólo no se ha podido confirmar.
+  }
+}
+
+function pintarGasto({ hoy_usd = 0 } = {}) {
+  el.costeHoy.textContent = "$" + Number(hoy_usd).toFixed(4);
+
+  el.indicadorHoy.classList.remove("cerca-del-tope", "sobre-el-tope");
+  if (!presupuestoUsd) return;
+
+  // Avisa antes de llegar al tope, no sólo al pasarse: para entonces el
+  // aviso ya no sirve de nada.
+  if (hoy_usd >= presupuestoUsd) {
+    el.indicadorHoy.classList.add("sobre-el-tope");
+  } else if (hoy_usd >= presupuestoUsd * 0.8) {
+    el.indicadorHoy.classList.add("cerca-del-tope");
+  }
 }
 
 /* ── Memoria ───────────────────────────────────────────────── */
@@ -680,6 +712,7 @@ fetch("/api/estado")
     el.modelo.textContent = s.modelo || "—";
     el.voz.textContent = s.voz || "—";
     el.coste.textContent = "$" + Number(s.coste_usd || 0).toFixed(4);
+    presupuestoUsd = s.presupuesto_usd || null;
     hayMicrofono = Boolean(s.microfono) || usaMicrofonoDelNavegador();
 
     if (usaMicrofonoDelNavegador()) {
@@ -703,6 +736,9 @@ fetch("/api/estado")
 
     pintarPausa(Boolean(s.pausado));
     pintarEstado(s.state);
+    // Depende de `presupuestoUsd`, fijado justo arriba: por eso se pide
+    // aquí dentro y no junto a las demás cargas iniciales.
+    cargarGasto();
   })
   .catch(() => {});
 

@@ -104,6 +104,11 @@ body { display: flex; flex-direction: column; }
   color: var(--texto-tenue);
 }
 
+/* El gasto de hoy avisa antes de llegar al tope, no sólo al pasarse: para
+   entonces el aviso ya no sirve de nada. */
+#indicador-hoy.cerca-del-tope span:last-child { color: var(--oro); }
+#indicador-hoy.sobre-el-tope span:last-child { color: var(--rojo); }
+
 .conexion { flex-direction: row; align-items: center; gap: 8px; }
 
 .conexion .punto {

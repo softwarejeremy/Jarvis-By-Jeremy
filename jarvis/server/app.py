@@ -30,6 +30,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from ..core.gasto import Gasto
 from ..core.historial import Historial
 from ..core.memory import CATEGORIAS, Memory
 from ..core.permissions import interpretar_respuesta
@@ -151,7 +152,13 @@ def crear_app(core: JarvisCore) -> FastAPI:
             "microfono": getattr(core.mic, "es_real", False),
             "pausado": core.pausado,
             "usuario": core.s.agent.user_name,
+            "presupuesto_usd": core.s.agent.max_budget_usd,
         }
+
+    @app.get("/api/gasto")
+    async def gasto():  # noqa: ANN202
+        g = Gasto(core.s.data_dir / "gasto.json")
+        return {"sesion_usd": core.coste_usd, "hoy_usd": g.hoy(), "mes_usd": g.mes_actual()}
 
     @app.get("/api/memoria")
     async def memoria():  # noqa: ANN202
