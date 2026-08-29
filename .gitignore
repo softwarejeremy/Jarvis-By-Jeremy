@@ -23,6 +23,9 @@ models/
 *.onnx
 *.tflite
 
+# Salida generada por el skill graphify (grafo, caché, visualización)
+graphify-out/
+
 # Editores / SO
 .vscode/
 .idea/
