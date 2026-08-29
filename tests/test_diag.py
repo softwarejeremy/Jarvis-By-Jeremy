@@ -130,3 +130,80 @@ class TestShimDeLotesDeWindows:
         salida = capsys.readouterr().out
         assert "install.ps1" in salida, "hay que decir cómo arreglarlo"
         assert "claude.CMD" in salida
+
+
+class TestPruebaDelCerebro:
+    """`--diag` daba todo verde con el cerebro muerto: comprobaba que el CLI
+    existía, nunca que Claude contestara. El único sitio donde se veía el
+    fallo era en mitad de una conversación, atascado en «pensando».
+    """
+
+    def _con_clave(self, monkeypatch):
+        s = diag.load_settings()
+        s.anthropic_api_key = "sk-ant-de-prueba"
+        monkeypatch.setattr(diag, "load_settings", lambda *_a, **_k: s)
+        return s
+
+    def _responde(self, monkeypatch, resultado=None, error=None):
+        """Sustituye el turno real por uno de mentira, sin tocar asyncio.run:
+        así se ejercita el camino de verdad, corrutina incluida."""
+        async def _falso(_tope):
+            if error is not None:
+                raise error
+            return resultado
+
+        monkeypatch.setattr(diag, "_hablar_con_claude", _falso)
+
+    def test_sin_clave_se_omite(self, monkeypatch, capsys):
+        s = diag.load_settings()
+        s.anthropic_api_key = ""
+        monkeypatch.setattr(diag, "load_settings", lambda *_a, **_k: s)
+
+        diag._probar_cerebro()
+
+        assert "modo demostración" in capsys.readouterr().out
+
+    def test_reporta_la_respuesta(self, monkeypatch, capsys):
+        self._con_clave(monkeypatch)
+        self._responde(monkeypatch, resultado=("listo", None))
+
+        diag._probar_cerebro()
+
+        assert "Claude responde" in capsys.readouterr().out
+
+    def test_un_cuelgue_se_reporta_como_fallo(self, monkeypatch, capsys):
+        # El caso real: el CLI arranca y nunca produce nada.
+        self._con_clave(monkeypatch)
+        self._responde(monkeypatch, error=TimeoutError())
+
+        diag._probar_cerebro()
+
+        salida = capsys.readouterr().out
+        assert "No ha respondido" in salida
+        assert "claude" in salida, "hay que decir qué probar a continuación"
+
+    def test_una_excepcion_se_muestra_cruda(self, monkeypatch, capsys):
+        # El mensaje del SDK es justo lo que hace falta para diagnosticar:
+        # tragárselo dejaría otra vez un fallo sin explicación.
+        self._con_clave(monkeypatch)
+        self._responde(monkeypatch, error=RuntimeError("CLI process exited with code 1"))
+
+        diag._probar_cerebro()
+
+        assert "CLI process exited with code 1" in capsys.readouterr().out
+
+    def test_un_error_de_claude_se_reporta(self, monkeypatch, capsys):
+        self._con_clave(monkeypatch)
+        self._responde(monkeypatch, resultado=("", "No hay saldo en la cuenta."))
+
+        diag._probar_cerebro()
+
+        assert "No hay saldo" in capsys.readouterr().out
+
+    def test_un_turno_mudo_no_pasa_por_bueno(self, monkeypatch, capsys):
+        self._con_clave(monkeypatch)
+        self._responde(monkeypatch, resultado=("", None))
+
+        diag._probar_cerebro()
+
+        assert "sin texto" in capsys.readouterr().out

@@ -10,6 +10,7 @@ funcione se sepa exactamente cuál falló en vez de tener que adivinar.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib.util
 import platform
 import shutil
@@ -125,6 +126,73 @@ def _comprobar_credenciales() -> None:
         )
     if s.elevenlabs_api_key:
         console.print(f"  {OK} ELEVENLABS_API_KEY presente (voz premium disponible)")
+
+
+async def _hablar_con_claude(tope: float):  # noqa: ANN202
+    """Un turno mínimo de verdad. Devuelve (texto, error)."""
+    from .core.agent import Agent, Delta, Done
+
+    s = load_settings()
+    agente = Agent(s)
+    await agente.start()
+    try:
+        trozos: list[str] = []
+
+        async def _turno() -> str | None:
+            async for chunk in agente.ask("Responde únicamente con la palabra: listo"):
+                if isinstance(chunk, Delta):
+                    trozos.append(chunk.text)
+                elif isinstance(chunk, Done) and chunk.error:
+                    return chunk.error
+            return None
+
+        error = await asyncio.wait_for(_turno(), timeout=tope)
+        return "".join(trozos).strip(), error
+    finally:
+        with contextlib.suppress(Exception):
+            await agente.stop()
+
+
+def _probar_cerebro() -> None:
+    """Hablar con Claude de verdad, no sólo comprobar que el CLI existe.
+
+    Reportado en vivo: con el CLI presente, las credenciales puestas y todo
+    el diagnóstico en verde, J.A.R.V.I.S. se quedaba en «pensando» sin
+    responder jamás. Comprobar que el binario está ahí no dice nada sobre si
+    contesta; sin este turno de prueba, el único sitio donde se veía el fallo
+    era en mitad de una conversación.
+    """
+    _seccion("Prueba de Claude")
+    s = load_settings()
+    if not s.has_api_key:
+        console.print(f"  {AVISO} Sin clave: se omite (sólo modo demostración).")
+        return
+
+    tope = max(30.0, s.agent.first_token_timeout_s)
+    console.print(f"  Preguntando a {s.agent.model}… (hasta {tope:.0f} s)")
+
+    t0 = time.perf_counter()
+    try:
+        texto, error = asyncio.run(_hablar_con_claude(tope))
+    except (TimeoutError, asyncio.TimeoutError):
+        console.print(
+            f"  {FALLO} No ha respondido en {tope:.0f} s.\n"
+            "      El CLI arranca pero se queda esperando. Pruebe a ejecutar\n"
+            "      [cyan]claude[/cyan] a solas una vez: si pide iniciar sesión o\n"
+            "      confiar en la carpeta, nadie puede contestar a eso desde aquí."
+        )
+        return
+    except Exception as exc:  # noqa: BLE001 - aquí interesa el mensaje crudo
+        console.print(f"  {FALLO} {type(exc).__name__}: {exc}")
+        return
+
+    tardanza = (time.perf_counter() - t0) * 1000
+    if error:
+        console.print(f"  {FALLO} {error}")
+    elif texto:
+        console.print(f"  {OK} Claude responde: «{texto}»  ({tardanza:.0f} ms)")
+    else:
+        console.print(f"  {AVISO} Turno completado pero sin texto ({tardanza:.0f} ms).")
 
 
 def _comprobar_dependencias() -> None:
@@ -426,6 +494,7 @@ def ejecutar_diagnostico() -> int:
     _seguro(_comprobar_configuracion)
     _seguro(_comprobar_credenciales)
     _seguro(_comprobar_dependencias)
+    _seguro(_probar_cerebro)
     _seguro(_comprobar_audio)
     _seguro(_probar_voz)
     transcriber = _seguro(_probar_transcripcion)
