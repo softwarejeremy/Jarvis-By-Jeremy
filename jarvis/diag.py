@@ -128,12 +128,16 @@ def _comprobar_credenciales() -> None:
         console.print(f"  {OK} ELEVENLABS_API_KEY presente (voz premium disponible)")
 
 
-async def _hablar_con_claude(tope: float):  # noqa: ANN202
-    """Un turno mínimo de verdad. Devuelve (texto, error)."""
+async def _hablar_con_claude(tope: float, quejas: list[str] | None = None):  # noqa: ANN202
+    """Un turno mínimo de verdad. Devuelve (texto, error).
+
+    `quejas` recoge el stderr del CLI: cuando el turno se cuelga o revienta,
+    suele ser el único sitio donde el CLI dice qué le pasa.
+    """
     from .core.agent import Agent, Delta, Done
 
     s = load_settings()
-    agente = Agent(s)
+    agente = Agent(s, stderr=quejas.append if quejas is not None else None)
     await agente.start()
     try:
         trozos: list[str] = []
@@ -151,6 +155,22 @@ async def _hablar_con_claude(tope: float):  # noqa: ANN202
     finally:
         with contextlib.suppress(Exception):
             await agente.stop()
+
+
+def _mostrar_quejas(quejas: list[str], maximo: int = 12) -> None:
+    """Lo que el CLI escribió por stderr, que es donde suele estar la pista."""
+    lineas = [linea for q in quejas for linea in q.splitlines() if linea.strip()]
+    if not lineas:
+        console.print("      [dim](el CLI no ha dicho nada por stderr)[/dim]")
+        return
+
+    console.print("      [dim]El CLI ha dicho:[/dim]")
+    if len(lineas) > maximo:
+        # Las últimas: si algo falló, el motivo está al final, no al principio.
+        console.print(f"      [dim]… ({len(lineas) - maximo} líneas antes)[/dim]")
+        lineas = lineas[-maximo:]
+    for linea in lineas:
+        console.print(f"      [dim]│[/dim] {linea}")
 
 
 def _probar_cerebro() -> None:
@@ -171,24 +191,26 @@ def _probar_cerebro() -> None:
     tope = max(30.0, s.agent.first_token_timeout_s)
     console.print(f"  Preguntando a {s.agent.model}… (hasta {tope:.0f} s)")
 
+    quejas: list[str] = []
     t0 = time.perf_counter()
     try:
-        texto, error = asyncio.run(_hablar_con_claude(tope))
+        texto, error = asyncio.run(_hablar_con_claude(tope, quejas))
     except (TimeoutError, asyncio.TimeoutError):
         console.print(
-            f"  {FALLO} No ha respondido en {tope:.0f} s.\n"
-            "      El CLI arranca pero se queda esperando. Pruebe a ejecutar\n"
-            "      [cyan]claude[/cyan] a solas una vez: si pide iniciar sesión o\n"
-            "      confiar en la carpeta, nadie puede contestar a eso desde aquí."
+            f"  {FALLO} No ha respondido en {tope:.0f} s: el CLI arranca pero "
+            "se queda esperando."
         )
+        _mostrar_quejas(quejas)
         return
     except Exception as exc:  # noqa: BLE001 - aquí interesa el mensaje crudo
         console.print(f"  {FALLO} {type(exc).__name__}: {exc}")
+        _mostrar_quejas(quejas)
         return
 
     tardanza = (time.perf_counter() - t0) * 1000
     if error:
         console.print(f"  {FALLO} {error}")
+        _mostrar_quejas(quejas)
     elif texto:
         console.print(f"  {OK} Claude responde: «{texto}»  ({tardanza:.0f} ms)")
     else:

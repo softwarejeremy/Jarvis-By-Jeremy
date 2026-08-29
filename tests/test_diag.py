@@ -144,10 +144,12 @@ class TestPruebaDelCerebro:
         monkeypatch.setattr(diag, "load_settings", lambda *_a, **_k: s)
         return s
 
-    def _responde(self, monkeypatch, resultado=None, error=None):
+    def _responde(self, monkeypatch, resultado=None, error=None, stderr=None):
         """Sustituye el turno real por uno de mentira, sin tocar asyncio.run:
         así se ejercita el camino de verdad, corrutina incluida."""
-        async def _falso(_tope):
+        async def _falso(_tope, quejas=None):
+            if quejas is not None:
+                quejas.extend(stderr or [])
             if error is not None:
                 raise error
             return resultado
@@ -207,3 +209,48 @@ class TestPruebaDelCerebro:
         diag._probar_cerebro()
 
         assert "sin texto" in capsys.readouterr().out
+
+
+class TestQuejasDelCli:
+    """El stderr del CLI es lo único que queda cuando arranca pero no
+    contesta: el turno no da error, simplemente no llega nada. Perderlo
+    dejaba el fallo sin una sola pista que leer.
+    """
+
+    def test_muestra_lo_que_dijo_el_cli(self, capsys):
+        diag._mostrar_quejas(["Error: unknown option --effort\n"])
+
+        salida = capsys.readouterr().out
+        assert "unknown option --effort" in salida
+
+    def test_dice_expresamente_que_no_dijo_nada(self, capsys):
+        # Silencio y "no lo hemos mirado" son diagnósticos distintos.
+        diag._mostrar_quejas([])
+
+        assert "no ha dicho nada" in capsys.readouterr().out
+
+    def test_recorta_conservando_el_final(self, capsys):
+        # Si algo falla, el motivo está en las últimas líneas, no en las
+        # primeras: recortar por el otro lado tiraría justo la pista.
+        diag._mostrar_quejas(["\n".join(f"linea {i}" for i in range(40))], maximo=5)
+
+        salida = capsys.readouterr().out
+        assert "linea 39" in salida
+        assert "linea 0" not in salida
+        assert "35 líneas antes" in salida
+
+    def test_el_cuelgue_incluye_las_quejas(self, monkeypatch, capsys):
+        s = diag.load_settings()
+        s.anthropic_api_key = "sk-ant-de-prueba"
+        monkeypatch.setattr(diag, "load_settings", lambda *_a, **_k: s)
+
+        async def _cuelga(_tope, quejas=None):
+            if quejas is not None:
+                quejas.append("Error: something went wrong in the CLI")
+            raise TimeoutError
+
+        monkeypatch.setattr(diag, "_hablar_con_claude", _cuelga)
+
+        diag._probar_cerebro()
+
+        assert "something went wrong" in capsys.readouterr().out

@@ -77,11 +77,15 @@ class Agent:
         can_use_tool: Any = None,
         mcp_servers: dict[str, Any] | None = None,
         memoria: str = "",
+        stderr: Any = None,
     ) -> None:
         self._settings = settings
         self._can_use_tool = can_use_tool
         self._mcp_servers = mcp_servers or {}
         self._memoria = memoria
+        # Lo que el CLI escriba por stderr. Sin esto se pierde, y un CLI que
+        # arranca pero no contesta no deja ni un rastro que leer.
+        self._stderr = stderr
         self._client: ClaudeSDKClient | None = None
         self.session_id: str | None = None
         self.coste_sesion_usd: float = 0.0
@@ -117,6 +121,7 @@ class Agent:
             env=env,
             can_use_tool=self._can_use_tool,
             mcp_servers=self._mcp_servers,
+            stderr=self._stderr,
             # Necesario para recibir el texto token a token y poder empezar a
             # hablar antes de que Claude termine de escribir.
             include_partial_messages=True,
