@@ -12,11 +12,12 @@ Los secretos (API keys) viven **sólo** en `.env`, que está en `.gitignore`.
 from __future__ import annotations
 
 import sys
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -28,6 +29,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Carpeta de datos del usuario: memoria, sesiones, contador de gasto.
 # Se puede mover con JARVIS_DATA_DIR.
 DEFAULT_DATA_DIR = Path.home() / ".jarvis"
+
+# El contenido de config.toml para la construcción de Settings en curso.
+# pydantic-settings trata los kwargs del constructor como la fuente de
+# MÁS prioridad — si `config.toml` se pasara así (`Settings(**toml)`), le
+# ganaría al entorno, al revés de lo que promete este módulo. Colgarlo aquí
+# y leerlo desde una fuente de prioridad más baja (ver `_FuenteToml`) es lo
+# que hace que `JARVIS_AGENT__MODEL` gane de verdad sobre el archivo.
+_toml_en_curso: ContextVar[dict[str, Any] | None] = ContextVar("_toml_en_curso", default=None)
 
 
 class AgentSettings(BaseModel):
@@ -150,6 +159,16 @@ class PermissionSettings(BaseModel):
     confirm_timeout_s: float = 12.0
 
 
+class _FuenteToml(PydanticBaseSettingsSource):
+    """El contenido de `config.toml`, con menos prioridad que el entorno."""
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:  # noqa: ARG002
+        return None, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        return _toml_en_curso.get() or {}
+
+
 class Settings(BaseSettings):
     """Configuración completa. Se construye con :func:`load_settings`."""
 
@@ -160,6 +179,26 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # Orden de mayor a menor prioridad: los kwargs explícitos del
+        # constructor (los que usan los tests) siguen mandando; luego el
+        # entorno y `.env`; `config.toml` va DESPUÉS para que nunca les gane.
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            _FuenteToml(settings_cls),
+            file_secret_settings,
+        )
 
     # Secretos: se leen del entorno con su nombre estándar, sin prefijo.
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
@@ -204,6 +243,10 @@ def load_settings(config_path: Path | None = None) -> Settings:
     sin editar archivos.
     """
     path = config_path or (PROJECT_ROOT / "config.toml")
-    settings = Settings(**_read_toml(path))
+    token = _toml_en_curso.set(_read_toml(path))
+    try:
+        settings = Settings()
+    finally:
+        _toml_en_curso.reset(token)
     settings.ensure_dirs()
     return settings

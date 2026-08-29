@@ -114,11 +114,18 @@ class MicStream:
         bloque = indata[:, 0].copy()
         self._pre_roll.append(bloque)
 
-        if self._loop is None or self._cola is None:
+        if self._loop is None or self._cola is None or self._loop.is_closed():
             return
 
-        # El callback corre en otro hilo: hay que cruzar al loop de asyncio.
-        self._loop.call_soon_threadsafe(self._encolar, bloque)
+        # El callback corre en el hilo de PortAudio, sin sincronizar con el
+        # cierre del loop de asyncio: puede llegar un frame justo entre el
+        # chequeo de arriba y esta llamada (visto en vivo con Ctrl+C). Ese
+        # frame ya no le importa a nadie, así que se descarta en silencio en
+        # vez de dejar que reviente un hilo del que Python no puede recuperarse.
+        try:
+            self._loop.call_soon_threadsafe(self._encolar, bloque)
+        except RuntimeError:
+            pass
 
     def _encolar(self, bloque: np.ndarray) -> None:
         if self._cola is None:
