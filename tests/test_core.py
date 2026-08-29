@@ -457,6 +457,77 @@ class TestNoSeQuedaColgado:
         assert any("a tiempo" in f for f in tts.dicho), "debe decirlo, no callarse"
         assert core.agent.preguntas == []
 
+    async def test_un_claude_que_nunca_arranca_no_deja_pensando_para_siempre(self, settings):
+        """Reportado en vivo: se quedó en «pensando» y no salió de ahí.
+
+        El vigilante lo habría rescatado, pero a los 180 s: tres minutos de
+        silencio que no se distinguen de un cuelgue. Que la fase de pensar
+        avise por su cuenta, como ya hacía la transcripción.
+        """
+        settings.agent.first_token_timeout_s = 0.2
+
+        class AgenteQueNuncaEmpieza:
+            def __init__(self) -> None:
+                self.preguntas: list[str] = []
+                self.cerrado = False
+
+            async def start(self) -> None: ...
+            async def stop(self) -> None: ...
+            async def interrupt(self) -> None: ...
+
+            async def ask(self, prompt: str):  # noqa: ANN202
+                self.preguntas.append(prompt)
+                try:
+                    await asyncio.sleep(60)  # no llega a producir nada
+                    yield Delta("tarde")
+                finally:
+                    self.cerrado = True
+
+        agente = AgenteQueNuncaEmpieza()
+        tts = FakeTTS()
+        core, eventos = construir(settings, agent=agente, tts=tts)
+
+        async with NucleoEnMarcha(core):
+            await core.responder("¿me escuchas?")
+
+            assert core.state is not State.PENSANDO, "no puede quedarse pensando"
+
+        mensajes = " ".join(
+            e.data.get("message", "") for e in eventos if e.type is EventType.ERROR
+        )
+        assert "no ha empezado a responder" in mensajes
+        assert any("a tiempo" in f for f in tts.dicho), "debe decirlo, no callarse"
+        # Cancelar el `__anext__` ya cierra el generador (y con él el turno):
+        # comprobado, no supuesto. Sin esto el CLI quedaría vivo.
+        assert agente.cerrado
+
+    async def test_un_turno_largo_pero_vivo_no_se_corta(self, settings):
+        # El tope es sólo para el PRIMER trozo: una vez que Claude habla, un
+        # turno con herramientas puede durar mucho más y es legítimo.
+        settings.agent.first_token_timeout_s = 0.3
+
+        class AgenteLentoPeroVivo:
+            async def start(self) -> None: ...
+            async def stop(self) -> None: ...
+            async def interrupt(self) -> None: ...
+
+            async def ask(self, prompt):  # noqa: ANN001, ANN202
+                del prompt
+                yield Delta("Voy. ")
+                await asyncio.sleep(0.6)  # más que el tope, ya arrancado
+                yield Delta("Ya está.")
+                yield Done(cost_usd=0.01)
+
+        core, eventos = construir(settings, agent=AgenteLentoPeroVivo())
+
+        async with NucleoEnMarcha(core):
+            await core.responder("haz algo largo")
+
+        errores = [e for e in eventos if e.type is EventType.ERROR]
+        assert not errores, f"no debía cortarse: {errores}"
+        final = [e for e in eventos if e.type is EventType.ASSISTANT_DONE]
+        assert final and final[-1].data["text"] == "Voy. Ya está."
+
     async def test_el_vigilante_rescata_un_estado_atascado(self, settings):
         settings.audio.watchdog_s = 0.4
         core, eventos = construir(settings)

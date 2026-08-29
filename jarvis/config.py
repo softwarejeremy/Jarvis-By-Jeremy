@@ -48,6 +48,10 @@ class AgentSettings(BaseModel):
     effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     # Tope de gasto por sesión en USD. El propio SDK corta al alcanzarlo.
     max_budget_usd: float | None = 2.0
+    # Cuánto se espera al PRIMER trozo de respuesta. Sólo al primero: una vez
+    # que Claude arranca, un turno con herramientas puede durar minutos con
+    # toda la razón. Lo que no puede es no empezar nunca. 0 lo desactiva.
+    first_token_timeout_s: float = 60.0
     # Nombre con el que J.A.R.V.I.S. se dirige a ti.
     user_name: str = "señor"
     # Carpetas que puede leer además del directorio de trabajo.

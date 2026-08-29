@@ -27,6 +27,12 @@ effort = "low"
 # Referencia medida: ~$0.02 por turno de conversación con Opus 5.
 max_budget_usd = 2.0
 
+# Cuánto espera al PRIMER trozo de respuesta, en segundos. Sólo al primero:
+# una vez que Claude arranca, un turno con herramientas puede durar minutos
+# con toda la razón. Lo que no puede es no empezar nunca y dejarte mirando
+# un "pensando" eterno. 0 lo desactiva.
+first_token_timeout_s = 60.0
+
 # Cómo se dirige a ti.
 user_name = "señor"
 

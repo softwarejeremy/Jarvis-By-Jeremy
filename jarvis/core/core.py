@@ -370,7 +370,7 @@ class JarvisCore:
         completo: list[str] = []
 
         try:
-            async for chunk in self.agent.ask(texto):
+            async for chunk in self._respuesta_con_tope(texto):
                 if isinstance(chunk, Delta):
                     completo.append(chunk.text)
                     self.bus.emit(EventType.ASSISTANT_DELTA, text=chunk.text)
@@ -391,6 +391,16 @@ class JarvisCore:
             for frase in chunker.flush():
                 await self._encolar_voz(frase)
 
+        except (TimeoutError, asyncio.TimeoutError):
+            tope = self.s.agent.first_token_timeout_s
+            self.bus.emit(
+                EventType.ERROR,
+                message=(
+                    f"Claude no ha empezado a responder en {tope:.0f} s. "
+                    "Compruebe el CLI de Claude Code con `python -m jarvis --diag`."
+                ),
+            )
+            await self._encolar_voz("Claude no me ha respondido a tiempo.")
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -400,6 +410,32 @@ class JarvisCore:
         self.bus.emit(EventType.ASSISTANT_DONE, text="".join(completo))
         await self._esperar_silencio()
         self._a_reposo()
+
+    async def _respuesta_con_tope(self, texto: str):
+        """Los trozos de la respuesta, con tope de tiempo para el primero.
+
+        Sólo para el primero, a propósito: en cuanto Claude empieza a hablar
+        el turno está vivo, y uno que use herramientas puede durar minutos con
+        toda la razón. Lo que no puede es no empezar nunca. Sin esto, un CLI
+        que se queda esperando deja a J.A.R.V.I.S. en «pensando» hasta que
+        salta el vigilante —tres minutos de silencio, indistinguibles de estar
+        colgado—, que es justo el síntoma que se reportó en vivo.
+        """
+        iterador = self.agent.ask(texto).__aiter__()
+        tope = self.s.agent.first_token_timeout_s
+        primero = True
+
+        while True:
+            try:
+                if primero and tope > 0:
+                    chunk = await asyncio.wait_for(iterador.__anext__(), timeout=tope)
+                else:
+                    chunk = await iterador.__anext__()
+            except StopAsyncIteration:
+                return
+
+            primero = False
+            yield chunk
 
     # ── voz ─────────────────────────────────────────────────────────────
     async def _encolar_voz(self, texto: str) -> None:
