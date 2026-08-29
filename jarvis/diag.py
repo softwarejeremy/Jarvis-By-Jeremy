@@ -32,6 +32,15 @@ def _seccion(titulo: str) -> None:
     console.print(f"\n[bold cyan]── {titulo} ─────────────────────────[/bold cyan]")
 
 
+def _es_shim_de_lotes(cli: str) -> bool:
+    """Si el CLI encontrado es un `.cmd`/`.bat` de Windows.
+
+    Sólo cuenta en Windows: en Linux un archivo así no lo produce ningún
+    instalador y no hay nada que avisar.
+    """
+    return platform.system() == "Windows" and cli.lower().endswith((".cmd", ".bat"))
+
+
 def _comprobar_entorno() -> None:
     _seccion("Entorno")
     console.print(
@@ -41,7 +50,20 @@ def _comprobar_entorno() -> None:
 
     # El Agent SDK lanza el CLI de Claude Code por debajo: sin él no hay cerebro.
     cli = shutil.which("claude")
-    if cli:
+    if cli and _es_shim_de_lotes(cli):
+        # Encontrarlo no basta. `npm install -g` deja en Windows un envoltorio
+        # `claude.cmd`, y el SDK se NIEGA a ejecutarlo (no es un .exe nativo):
+        # J.A.R.V.I.S. arranca, escucha y transcribe, pero no contesta nunca.
+        # Dar un ✓ aquí por el mero hecho de encontrarlo mandaba a buscar el
+        # fallo justo donde no estaba.
+        console.print(
+            f"  {FALLO} El CLI encontrado es un envoltorio .cmd de npm:\n"
+            f"      {cli}\n"
+            "      El Agent SDK no lo ejecuta, así que Claude nunca responde.\n"
+            "      Instala el ejecutable nativo (PowerShell):\n"
+            "      [cyan]irm https://claude.ai/install.ps1 | iex[/cyan]"
+        )
+    elif cli:
         console.print(f"  {OK} CLI de Claude Code: {cli}")
     else:
         console.print(

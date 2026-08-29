@@ -39,12 +39,17 @@ de tocar nada importante, te pregunta en voz alta.
 **Python 3.11** — [python.org/downloads](https://www.python.org/downloads/).
 Marca **"Add Python to PATH"** durante la instalación.
 
-**Node.js y el CLI de Claude Code.** El Agent SDK arranca el CLI de Claude Code por
-debajo; sin él no hay cerebro. Instala [Node.js](https://nodejs.org/) y luego:
+**El CLI de Claude Code.** El Agent SDK lo arranca por debajo; sin él no hay cerebro.
+En Windows instala el ejecutable nativo:
 
 ```powershell
-npm install -g @anthropic-ai/claude-code
+irm https://claude.ai/install.ps1 | iex
 ```
+
+No sirve `npm install -g @anthropic-ai/claude-code`: en Windows deja un envoltorio
+`claude.cmd` que el SDK se niega a ejecutar. El síntoma es engañoso —J.A.R.V.I.S.
+arranca, escucha y transcribe, pero no contesta nunca—, así que `--diag` lo señala
+como fallo aunque encuentre el CLI.
 
 ### 2. Permitir scripts en PowerShell
 
@@ -431,7 +436,9 @@ y el servidor web. Todo lo que toca hardware tiene un doble en
 deshabilitada"** → Es la política de PowerShell, no un fallo del proyecto. Mira el paso 2
 de la instalación: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`.
 
-**"No encuentro el CLI de Claude Code"** → `npm install -g @anthropic-ai/claude-code`
+**"No encuentro el CLI de Claude Code"**, o **escucha y transcribe pero nunca contesta**
+→ En Windows, `irm https://claude.ai/install.ps1 | iex`. Si lo instalaste con npm tienes
+un `claude.cmd` que el SDK no ejecuta; `--diag` lo distingue de no tenerlo.
 
 **No se oye nada** → `python -m jarvis --diag` lista los dispositivos; pon el número
 correcto en `audio.output_device`.

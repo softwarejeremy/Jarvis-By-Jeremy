@@ -90,3 +90,43 @@ class TestNoSeCae:
 
         assert "mic" in ejecutadas, "lo posterior al fallo debe ejecutarse igual"
         assert len(ejecutadas) == 6
+
+
+class TestShimDeLotesDeWindows:
+    """Reportado en vivo: `--diag` daba ✓ al CLI de Claude Code y aun así
+    J.A.R.V.I.S. escuchaba, transcribía y no contestaba nunca. Lo que `npm
+    install -g` deja en Windows es un envoltorio `claude.cmd`, y el Agent SDK
+    se niega a ejecutar un .cmd (exige el .exe nativo). El ✓ mandaba a buscar
+    el fallo justo donde no estaba.
+
+    Windows se fuerza siempre: en el sandbox y en la CI esto es Linux, y un
+    test que dependa de esa casualidad no probaría nada.
+    """
+
+    def test_reconoce_el_cmd_de_npm_en_windows(self, monkeypatch):
+        monkeypatch.setattr(diag.platform, "system", lambda: "Windows")
+
+        assert diag._es_shim_de_lotes(r"C:\Users\x\AppData\Roaming\npm\claude.CMD")
+        assert diag._es_shim_de_lotes(r"C:\Users\x\claude.bat")
+
+    def test_el_exe_nativo_es_valido(self, monkeypatch):
+        monkeypatch.setattr(diag.platform, "system", lambda: "Windows")
+
+        assert not diag._es_shim_de_lotes(r"C:\Program Files\claude\claude.exe")
+
+    def test_fuera_de_windows_no_avisa(self, monkeypatch):
+        # Un .cmd en Linux no lo produce ningún instalador: avisar ahí sería
+        # ruido. Se fuerza el sistema en vez de confiar en dónde corre esto.
+        monkeypatch.setattr(diag.platform, "system", lambda: "Linux")
+
+        assert not diag._es_shim_de_lotes("/home/x/claude.cmd")
+
+    def test_el_entorno_lo_reporta_como_fallo(self, monkeypatch, capsys):
+        monkeypatch.setattr(diag.platform, "system", lambda: "Windows")
+        monkeypatch.setattr(diag.shutil, "which", lambda _: r"C:\npm\claude.CMD")
+
+        diag._comprobar_entorno()
+
+        salida = capsys.readouterr().out
+        assert "install.ps1" in salida, "hay que decir cómo arreglarlo"
+        assert "claude.CMD" in salida
