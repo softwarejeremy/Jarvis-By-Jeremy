@@ -175,7 +175,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="JARVIS_",
         env_nested_delimiter="__",
-        env_file=".env",
+        # Ruta absoluta, no ".env" a secas: relativo se resuelve contra el
+        # directorio actual, así que arrancar desde otra carpeta dejaba a
+        # J.A.R.V.I.S. sin ANTHROPIC_API_KEY —y por tanto en modo
+        # demostración, contestando frases de ejemplo— sin decir por qué.
+        env_file=(PROJECT_ROOT / ".env", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

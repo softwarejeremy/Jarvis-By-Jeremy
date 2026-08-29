@@ -240,6 +240,11 @@ la mitad y para conversar va sobrado.
 copy config.example.toml config.toml
 ```
 
+Ese `copy` no es opcional: editar `config.example.toml` directamente no cambia nada,
+porque el que se lee es `config.toml`. Si algún ajuste parece no aplicarse,
+`python -m jarvis --diag` dice en su primera sección qué archivos ha leído de verdad
+y con qué modelo se ha quedado.
+
 Todo tiene valores por defecto razonables. Los ajustes que más se tocan:
 
 | Si te pasa esto | Cambia esto |

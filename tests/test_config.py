@@ -10,6 +10,8 @@ módulo ("el entorno siempre gana").
 
 from __future__ import annotations
 
+import pytest
+
 from jarvis.config import load_settings
 
 
@@ -37,3 +39,26 @@ class TestPrioridadDeFuentes:
         ruta = _escribir_toml(tmp_path, "")
 
         assert load_settings(ruta).agent.model == "claude-opus-5"
+
+
+class TestEnvNoDependeDelDirectorio:
+    """Reportado en vivo: J.A.R.V.I.S. respondía frases de ejemplo sin decir
+    por qué. `env_file=".env"` se resuelve contra el directorio ACTUAL, así
+    que arrancarlo desde otra carpeta lo dejaba sin `ANTHROPIC_API_KEY` —y
+    por tanto en modo demostración— aunque el `.env` estuviera en su sitio.
+    """
+
+    def test_encuentra_el_env_del_proyecto_desde_otro_directorio(self, tmp_path, monkeypatch):
+        from jarvis.config import PROJECT_ROOT, Settings
+
+        env = PROJECT_ROOT / ".env"
+        if env.exists():
+            pytest.skip("hay un .env real en el proyecto; no se toca")
+
+        env.write_text("ANTHROPIC_API_KEY=sk-de-prueba\n", encoding="utf-8")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.chdir(tmp_path)  # el caso real: arrancar desde otra carpeta
+        try:
+            assert Settings().anthropic_api_key == "sk-de-prueba"
+        finally:
+            env.unlink()

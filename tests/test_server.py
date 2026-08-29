@@ -31,10 +31,10 @@ from .conftest import FakeAgent, FakeTTS
 fastapi_testclient = pytest.importorskip("fastapi.testclient")
 
 
-def construir_core(settings, *, mic=None):
+def construir_core(settings, *, mic=None, agent=None):
     return JarvisCore(
         settings,
-        agent=FakeAgent(),
+        agent=agent if agent is not None else FakeAgent(),
         tts=FakeTTS(),
         player=NullPlayer(),
         mic=mic if mic is not None else FakeMicStream(np.zeros(0, dtype=np.float32)),
@@ -92,6 +92,27 @@ class TestApiEstado:
 
     def test_incluye_el_presupuesto_configurado(self, cliente, settings):
         assert cliente.get("/api/estado").json()["presupuesto_usd"] == settings.agent.max_budget_usd
+
+    def test_no_anuncia_el_modelo_configurado_estando_en_demo(self, settings):
+        # Reportado en vivo: sin clave, J.A.R.V.I.S. arranca en modo
+        # demostración y contesta frases de ejemplo, pero el HUD seguía
+        # anunciando el modelo del config.toml. Parecía que Claude estaba
+        # respondiendo mal, no que no estuviera respondiendo.
+        from jarvis.core.agent import DemoAgent
+
+        settings.agent.model = "claude-opus-5"
+        core = construir_core(settings, agent=DemoAgent())
+        with fastapi_testclient.TestClient(crear_app(core)) as c:
+            assert c.get("/api/estado").json()["modelo"] == "modo demostración"
+
+    def test_anuncia_el_modelo_real_del_agente(self, settings):
+        class AgenteConModelo(FakeAgent):
+            modelo = "claude-sonnet-5"
+
+        settings.agent.model = "claude-opus-5"  # el agente manda, no la config
+        core = construir_core(settings, agent=AgenteConModelo())
+        with fastapi_testclient.TestClient(crear_app(core)) as c:
+            assert c.get("/api/estado").json()["modelo"] == "claude-sonnet-5"
 
 
 class TestApiGasto:

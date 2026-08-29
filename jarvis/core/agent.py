@@ -85,6 +85,10 @@ class Agent:
         self._client: ClaudeSDKClient | None = None
         self.session_id: str | None = None
         self.coste_sesion_usd: float = 0.0
+        #: Qué cerebro hay detrás de verdad. Lo publica el HUD, que antes
+        #: leía el modelo de la configuración y por tanto anunciaba
+        #: "claude-opus-5" incluso estando en modo demostración.
+        self.modelo = settings.agent.model
 
     # ── ciclo de vida ───────────────────────────────────────────────────
     def _build_options(self) -> ClaudeAgentOptions:
@@ -237,6 +241,7 @@ class DemoAgent:
         self._i = 0
         self.session_id = "demo"
         self.coste_sesion_usd = 0.0
+        self.modelo = "modo demostración"
 
     async def start(self) -> None: ...
     async def stop(self) -> None: ...

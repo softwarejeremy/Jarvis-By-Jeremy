@@ -143,7 +143,9 @@ def crear_app(core: JarvisCore) -> FastAPI:
         return {
             "state": core.state.value,
             "coste_usd": core.coste_usd,
-            "modelo": core.s.agent.model,
+            # Del agente, no de la configuración: en modo demostración el
+            # modelo configurado no es el que está contestando.
+            "modelo": getattr(core.agent, "modelo", core.s.agent.model),
             "voz": getattr(core.tts, "nombre", "?"),
             "wake_word": core.wakeword.enabled,
             "atajo": core.s.hotkey.combo if core.s.hotkey.enabled else None,

@@ -51,6 +51,45 @@ def _comprobar_entorno() -> None:
         )
 
 
+def _comprobar_configuracion() -> None:
+    """De dónde sale cada ajuste.
+
+    Existe por un caso real: editar `config.example.toml` creyendo que era
+    `config.toml`, y no entender por qué el modelo seguía siendo el de
+    fábrica. Que el modelo efectivo salga junto a los archivos que de verdad
+    se han leído convierte ese enredo en algo que se ve de un vistazo.
+    """
+    from .config import PROJECT_ROOT
+
+    _seccion("Configuración")
+    s = load_settings()
+
+    toml = PROJECT_ROOT / "config.toml"
+    if toml.is_file():
+        console.print(f"  {OK} config.toml leído desde {toml}")
+    else:
+        console.print(
+            f"  {AVISO} No hay config.toml en {PROJECT_ROOT}: se usan los valores "
+            "de fábrica.\n"
+            "      Editar [cyan]config.example.toml[/cyan] no sirve; hay que copiarlo:\n"
+            "      [cyan]copy config.example.toml config.toml[/cyan]"
+        )
+
+    env = PROJECT_ROOT / ".env"
+    console.print(
+        f"  {OK} .env leído desde {env}"
+        if env.is_file()
+        else f"  {AVISO} No hay .env en {PROJECT_ROOT} (ahí van las claves)."
+    )
+
+    console.print(f"  {OK} Modelo efectivo: [bold]{s.agent.model}[/bold]")
+    if not s.has_api_key:
+        console.print(
+            f"      {AVISO} Sin clave no se usará ese modelo: J.A.R.V.I.S. arranca "
+            "en modo demostración y responde con frases de ejemplo."
+        )
+
+
 def _comprobar_credenciales() -> None:
     _seccion("Credenciales")
     s = load_settings()
@@ -362,6 +401,7 @@ def ejecutar_diagnostico() -> int:
     console.print("\n[bold cyan]J.A.R.V.I.S. — diagnóstico del sistema[/bold cyan]")
 
     _seguro(_comprobar_entorno)
+    _seguro(_comprobar_configuracion)
     _seguro(_comprobar_credenciales)
     _seguro(_comprobar_dependencias)
     _seguro(_comprobar_audio)
