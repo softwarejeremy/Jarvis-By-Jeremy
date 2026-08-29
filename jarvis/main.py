@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import os
 import sys
 from collections.abc import Coroutine
 from pathlib import Path
@@ -445,7 +446,26 @@ async def _bucle_texto(core: JarvisCore, hud: ConsoleHUD) -> None:
             await core.responder(linea)
 
 
+def _asegurar_flujos_validos() -> None:
+    """`pythonw.exe` dice que no hay consola dejando `sys.stdout`/`sys.stderr`
+    en `None`, y buena parte del código de alrededor —no sólo el nuestro—
+    da por hecho que existen. El caso real: uvicorn monta un
+    `logging.StreamHandler` sobre `sys.stdout` al arrancar el HUD web, y con
+    `None` ahí revienta con "Unable to configure formatter 'default'" antes
+    de levantar nada. Es justo el arranque automático (`inicio.py`), que
+    lanza con `pythonw.exe` y siempre incluye `--web`.
+
+    Sin consola nadie va a leer esa salida de todos modos, así que se manda
+    a la nada en vez de dejar que quien la escriba reviente.
+    """
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w")  # noqa: SIM115 - vive todo el proceso
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w")  # noqa: SIM115 - vive todo el proceso
+
+
 def run(argv: list[str] | None = None) -> int:
+    _asegurar_flujos_validos()
     args = _parse_args(argv)
     argv_crudo = argv if argv is not None else sys.argv[1:]
 

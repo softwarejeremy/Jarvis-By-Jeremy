@@ -322,6 +322,35 @@ class TestElCtrlCSiempreVuelve:
             assert resultado == 0
 
 
+class TestFlujosValidos:
+    """Reportado en vivo: el arranque automático (`pythonw.exe`, sin consola)
+    revienta con "Unable to configure formatter 'default'" antes de levantar
+    nada. `pythonw.exe` deja `sys.stdout`/`sys.stderr` en `None`, y uvicorn
+    monta un `logging.StreamHandler` sobre `sys.stdout` al arrancar el HUD
+    web —siempre presente en el arranque automático—, que revienta con
+    `None` ahí."""
+
+    def test_sustituye_stdout_y_stderr_en_none(self, monkeypatch):
+        monkeypatch.setattr(sys, "stdout", None)
+        monkeypatch.setattr(sys, "stderr", None)
+
+        main._asegurar_flujos_validos()
+
+        assert sys.stdout is not None
+        assert sys.stderr is not None
+        sys.stdout.write("")  # no debe reventar: es un flujo real
+        sys.stderr.write("")
+
+    def test_no_toca_flujos_que_ya_existen(self, monkeypatch):
+        stdout_original = sys.stdout
+        stderr_original = sys.stderr
+
+        main._asegurar_flujos_validos()
+
+        assert sys.stdout is stdout_original
+        assert sys.stderr is stderr_original
+
+
 class TestQrParaLaTerminal:
     """Escanear la cámara del móvil contra la terminal, sin teclear la IP."""
 
