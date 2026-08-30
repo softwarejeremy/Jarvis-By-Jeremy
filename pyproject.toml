@@ -22,6 +22,9 @@ dependencies = [
     # config.py lee TOML. `tomllib` es estándar desde 3.11; en 3.10 hace falta
     # este respaldo, sin el cual el paquete ni siquiera importa.
     'tomli>=2.0; python_version < "3.11"',
+    # Estado del equipo (CPU/RAM/disco/batería) sin reimplementar por SO como
+    # el resto de jarvis/tools/sistema.py: aquí sí compensa la dependencia.
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]

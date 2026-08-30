@@ -272,6 +272,7 @@ Además de leer y escribir archivos y buscar en la web, tiene herramientas propi
 |---|---|---|
 | «sube el volumen», «silencio» | Volumen del sistema | No |
 | «qué hora es» | Fecha y hora | No |
+| «cómo va el equipo», «cuánta batería queda» | CPU, RAM, disco y batería | No |
 | «abre Spotify», «abre mi carpeta de proyectos» | Lanza programas, archivos o webs | **Sí** |
 | «bloquea la pantalla» | Bloquea la sesión | **Sí** |
 | «recuerda que…», «olvida lo de…» | Memoria de largo plazo | No |
@@ -501,7 +502,7 @@ Implementado y probado:
 - [x] Memoria de largo plazo
 - [x] Diagnóstico y modos demo/simulación
 - [x] HUD web, accesible desde el móvil, con micrófono del navegador
-- [x] Herramientas de sistema: volumen, abrir programas, bloquear
+- [x] Herramientas de sistema: volumen, abrir programas, bloquear, estado del equipo
 - [x] Integración continua
 - [x] Arranque automático con Windows
 - [x] Icono en la bandeja del sistema, pausa del micrófono e instancia única

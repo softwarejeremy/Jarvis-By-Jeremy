@@ -127,10 +127,89 @@ class TestHora:
         assert not any(c in texto for c in ("Thursday", "January"))
 
 
+class TestEstadoDelEquipo:
+    """Forzado con `monkeypatch` en vez de leer la máquina real: los
+    porcentajes de CPU/RAM/disco de este sandbox no son parte del contrato,
+    sólo el formato con el que se leen.
+    """
+
+    def _simular(self, monkeypatch, *, cpu=42.0, ram_percent=60.0,
+                 ram_used=6 * 1024**3, ram_total=10 * 1024**3,
+                 disco_percent=50.0, disco_free=20 * 1024**3, bateria=None):
+        import types
+
+        monkeypatch.setattr(sistema.psutil, "cpu_percent", lambda interval=None: cpu)
+        monkeypatch.setattr(
+            sistema.psutil, "virtual_memory",
+            lambda: types.SimpleNamespace(
+                percent=ram_percent, used=ram_used, total=ram_total
+            ),
+        )
+        monkeypatch.setattr(
+            sistema.psutil, "disk_usage",
+            lambda _ruta: types.SimpleNamespace(percent=disco_percent, free=disco_free),
+        )
+        monkeypatch.setattr(sistema.psutil, "sensors_battery", lambda: bateria)
+
+    def test_incluye_cpu_ram_y_disco(self, monkeypatch):
+        self._simular(monkeypatch, cpu=42.0, ram_percent=60.0, disco_percent=50.0)
+
+        texto = sistema.estado_del_equipo()
+
+        assert "CPU al 42 por ciento" in texto
+        assert "Memoria al 60 por ciento" in texto
+        assert "Disco al 50 por ciento" in texto
+
+    def test_sin_bateria_no_la_menciona(self, monkeypatch):
+        # Un equipo de sobremesa: psutil.sensors_battery() devuelve None.
+        self._simular(monkeypatch, bateria=None)
+
+        assert "batería" not in sistema.estado_del_equipo().lower()
+
+    def test_con_bateria_dice_el_porcentaje_y_si_carga(self, monkeypatch):
+        import types
+
+        self._simular(
+            monkeypatch,
+            bateria=types.SimpleNamespace(percent=77.0, power_plugged=True),
+        )
+
+        texto = sistema.estado_del_equipo()
+
+        assert "Batería al 77 por ciento" in texto
+        assert "cargando" in texto
+
+    def test_bateria_sin_cargador_lo_dice(self, monkeypatch):
+        import types
+
+        self._simular(
+            monkeypatch,
+            bateria=types.SimpleNamespace(percent=30.0, power_plugged=False),
+        )
+
+        assert "sin cargador" in sistema.estado_del_equipo()
+
+    def test_disco_invalido_no_revienta(self, monkeypatch):
+        # Una ruta de workspace que ya no existe en este equipo: no debe
+        # tumbar el resto del informe.
+        self._simular(monkeypatch)
+        monkeypatch.setattr(
+            sistema.psutil, "disk_usage",
+            lambda _ruta: (_ for _ in ()).throw(OSError("ruta no válida")),
+        )
+
+        texto = sistema.estado_del_equipo()
+
+        assert "CPU" in texto
+        assert "Disco" not in texto
+
+
 class TestRegistro:
     def test_las_herramientas_quedan_registradas(self):
         nombres = {t.name for t in sistema.herramientas_de_sistema()}
-        assert nombres == {"volumen", "abrir", "bloquear_pantalla", "hora"}
+        assert nombres == {
+            "volumen", "abrir", "bloquear_pantalla", "hora", "estado_del_equipo",
+        }
 
     def test_van_en_el_mismo_servidor_que_la_memoria(self, tmp_path):
         # Dos servidores MCP con el mismo nombre se pisarían.
@@ -149,6 +228,7 @@ class TestPermisos:
 
         assert "mcp__jarvis__volumen" in PROPIAS_AUTOMATICAS
         assert "mcp__jarvis__hora" in PROPIAS_AUTOMATICAS
+        assert "mcp__jarvis__estado_del_equipo" in PROPIAS_AUTOMATICAS
 
     def test_abrir_y_bloquear_siempre_preguntan(self):
         from jarvis.core.permissions import PROPIAS_AUTOMATICAS

@@ -29,6 +29,7 @@ import subprocess
 from datetime import datetime
 from typing import Any
 
+import psutil
 from claude_agent_sdk import tool
 
 SISTEMA = platform.system()  # "Windows", "Linux", "Darwin"
@@ -204,6 +205,48 @@ def decir_hora(ahora: datetime | None = None) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  Estado del equipo
+# ═══════════════════════════════════════════════════════════════════════
+
+def estado_del_equipo(workspace: str = ".") -> str:
+    """CPU, RAM, disco y batería, redactados para voz.
+
+    `psutil` en vez de re-implementar por SO como el resto del archivo: aquí
+    sí compensa la dependencia, porque no hay un mecanismo nativo simple y
+    uniforme para esto en Windows/Linux/macOS a la vez.
+    """
+    cpu = psutil.cpu_percent(interval=0.3)
+    ram = psutil.virtual_memory()
+    partes = [
+        f"CPU al {cpu:.0f} por ciento.",
+        f"Memoria al {ram.percent:.0f} por ciento, "
+        f"{_gib(ram.used)} de {_gib(ram.total)} gigas.",
+    ]
+
+    try:
+        disco = psutil.disk_usage(workspace)
+        partes.append(
+            f"Disco al {disco.percent:.0f} por ciento, "
+            f"{_gib(disco.free)} gigas libres."
+        )
+    except OSError:
+        # Ruta de workspace no válida en este equipo: no es motivo para
+        # dejar de informar del resto.
+        pass
+
+    bateria = psutil.sensors_battery()
+    if bateria is not None:
+        estado = "cargando" if bateria.power_plugged else "sin cargador"
+        partes.append(f"Batería al {bateria.percent:.0f} por ciento, {estado}.")
+
+    return " ".join(partes)
+
+
+def _gib(bytes_: float) -> str:
+    return f"{bytes_ / (1024 ** 3):.1f}"
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  Registro en MCP
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -260,5 +303,16 @@ def herramientas_de_sistema() -> list[Any]:
         del args
         return {"content": [{"type": "text", "text": decir_hora()}]}
 
-    return [volumen, abrir_algo, bloquear, hora]
+    @tool(
+        "estado_del_equipo",
+        "Dice cómo está el equipo: uso de CPU, memoria, disco y batería si "
+        "la hay. Úsalo cuando el usuario pregunte si el equipo va lento, "
+        "cuánta batería queda, o cómo anda de recursos.",
+        {},
+    )
+    async def estado(args: dict[str, Any]) -> dict[str, Any]:
+        del args
+        return {"content": [{"type": "text", "text": estado_del_equipo()}]}
+
+    return [volumen, abrir_algo, bloquear, hora, estado]
 
