@@ -32,6 +32,13 @@ pip, así que Windows no encuentra `cublas64_12.dll` aunque esté instalado.
 nada — sin eso, la única alternativa real era instalar el CUDA Toolkit
 completo de NVIDIA (varios GB) sólo para tener las DLLs en el PATH del
 sistema.
+
+Ojo con la carpeta: el wheel de Linux mete las `.so` en `nvidia/cublas/lib/`,
+pero el de **Windows** las deja en `nvidia/cublas/bin/` (verificado con
+`Get-ChildItem` en una instalación real: sólo hay `bin/` e `include/`, nunca
+`lib/`). Buscar `nvidia.cublas.lib` como si fuera Linux falla siempre en
+Windows —silenciosamente, dentro del `contextlib.suppress`— y por eso la
+carpeta nunca llegaba a registrarse aunque los paquetes sí estuvieran puestos.
 """
 
 from __future__ import annotations
@@ -51,18 +58,26 @@ if TYPE_CHECKING:
 
 
 def _registrar_dll_cuda_en_windows() -> None:
-    """Añade al buscador de DLLs las carpetas de cuBLAS/cuDNN instaladas vía
-    pip, si las hay. No hace nada fuera de Windows ni si no están instaladas.
+    """Añade al buscador de DLLs las carpetas `bin/` de cuBLAS/cuDNN
+    instaladas vía pip, si las hay. No hace nada fuera de Windows ni si no
+    están instaladas.
+
+    `nvidia.cublas`/`nvidia.cudnn` son paquetes de espacio de nombres: no
+    tienen `__file__`, sólo `__path__` (la carpeta real en disco). Ahí dentro
+    va `bin/` en Windows, nunca `lib/` (eso es Linux) — ver el docstring del
+    módulo.
     """
     if sys.platform != "win32":
         return
     anadir_directorio_dll = getattr(os, "add_dll_directory", None)
     if anadir_directorio_dll is None:
         return
-    for paquete in ("nvidia.cublas.lib", "nvidia.cudnn.lib"):
+    for paquete in ("nvidia.cublas", "nvidia.cudnn"):
         with contextlib.suppress(Exception):
             modulo = importlib.import_module(paquete)
-            anadir_directorio_dll(str(Path(modulo.__file__).parent))
+            carpeta_bin = Path(next(iter(modulo.__path__))) / "bin"
+            if carpeta_bin.is_dir():
+                anadir_directorio_dll(str(carpeta_bin))
 
 # Precisiones aceptables por dispositivo, de mejor a peor. En GPU manda la
 # velocidad; en CPU, int8 es el punto dulce entre rapidez y calidad.

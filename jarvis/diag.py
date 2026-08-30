@@ -462,7 +462,11 @@ def _paquetes_cuda_instalados() -> bool:
     `pip install`, incluso después de que el usuario ya lo hubiera seguido —
     indistinguible de que el consejo no hubiera servido de nada.
     """
-    for paquete in ("nvidia.cublas.lib", "nvidia.cudnn.lib"):
+    # nvidia.cublas/nvidia.cudnn, no ".lib": ese subnombre es la estructura
+    # del wheel de Linux. En Windows el paquete deja bin/ e include/, nunca
+    # lib/ (verificado con Get-ChildItem en una instalación real) — buscar
+    # ".lib" ahí falla siempre, instalados o no. Ver jarvis/audio/stt.py.
+    for paquete in ("nvidia.cublas", "nvidia.cudnn"):
         try:
             if importlib.util.find_spec(paquete) is None:
                 return False

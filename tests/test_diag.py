@@ -281,19 +281,19 @@ class TestPaquetesCudaInstalados:
             monkeypatch.delitem(sys.modules, nombre, raising=False)
 
     def test_ambos_instalados(self, monkeypatch):
-        self._simular_instalado(monkeypatch, "nvidia.cublas.lib", "nvidia.cudnn.lib")
+        self._simular_instalado(monkeypatch, "nvidia.cublas", "nvidia.cudnn")
 
         assert diag._paquetes_cuda_instalados() is True
 
     def test_ninguno_instalado(self, monkeypatch):
-        self._simular_ausente(monkeypatch, "nvidia.cublas.lib", "nvidia.cudnn.lib", "nvidia")
+        self._simular_ausente(monkeypatch, "nvidia.cublas", "nvidia.cudnn", "nvidia")
 
         assert diag._paquetes_cuda_instalados() is False
 
     def test_solo_uno_instalado_no_cuenta(self, monkeypatch):
         # Un cuBLAS a medio instalar es justo el caso real que motivó esto.
-        self._simular_instalado(monkeypatch, "nvidia.cublas.lib")
-        self._simular_ausente(monkeypatch, "nvidia.cudnn.lib", "nvidia.cudnn")
+        self._simular_instalado(monkeypatch, "nvidia.cublas")
+        self._simular_ausente(monkeypatch, "nvidia.cudnn")
 
         assert diag._paquetes_cuda_instalados() is False
 
@@ -320,8 +320,8 @@ class TestAvisoGpuSinAprovechar:
         monkeypatch.setattr("jarvis.audio.stt.Transcriber", lambda *_a, **_k: doble)
 
     def test_sin_paquetes_sugiere_instalarlos(self, monkeypatch, capsys):
-        monkeypatch.delitem(__import__("sys").modules, "nvidia.cublas.lib", raising=False)
-        monkeypatch.delitem(__import__("sys").modules, "nvidia.cudnn.lib", raising=False)
+        monkeypatch.delitem(__import__("sys").modules, "nvidia.cublas", raising=False)
+        monkeypatch.delitem(__import__("sys").modules, "nvidia.cudnn", raising=False)
         doble = _TranscriberDeMentira(device="cpu", compute_type="int8", gpu_detectada=True)
         self._forzar_transcriber(monkeypatch, doble)
 
@@ -335,7 +335,7 @@ class TestAvisoGpuSinAprovechar:
         import sys
         import types
 
-        for nombre in ("nvidia.cublas.lib", "nvidia.cudnn.lib"):
+        for nombre in ("nvidia.cublas", "nvidia.cudnn"):
             modulo = types.ModuleType(nombre)
             modulo.__spec__ = importlib.util.spec_from_loader(nombre, loader=None)
             monkeypatch.setitem(sys.modules, nombre, modulo)
@@ -393,8 +393,8 @@ class TestAvisoCudaEnPruebaDeMicrofono:
     def test_sin_paquetes_sugiere_instalarlos(self, monkeypatch, capsys):
         import sys
 
-        monkeypatch.delitem(sys.modules, "nvidia.cublas.lib", raising=False)
-        monkeypatch.delitem(sys.modules, "nvidia.cudnn.lib", raising=False)
+        monkeypatch.delitem(sys.modules, "nvidia.cublas", raising=False)
+        monkeypatch.delitem(sys.modules, "nvidia.cudnn", raising=False)
         self._forzar_sounddevice(monkeypatch)
         doble = _MicTranscriberDeMentira("cuda/float32 falló transcribiendo (...)")
 
@@ -408,7 +408,7 @@ class TestAvisoCudaEnPruebaDeMicrofono:
         import sys
         import types
 
-        for nombre in ("nvidia.cublas.lib", "nvidia.cudnn.lib"):
+        for nombre in ("nvidia.cublas", "nvidia.cudnn"):
             modulo = types.ModuleType(nombre)
             modulo.__spec__ = importlib.util.spec_from_loader(nombre, loader=None)
             monkeypatch.setitem(sys.modules, nombre, modulo)
