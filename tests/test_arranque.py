@@ -268,6 +268,36 @@ class TestLimpiezaFinalAcotada:
         assert time.monotonic() - t0 < 10.0, "ha tardado más de lo que permite el límite"
 
 
+class TestLecturaDeTextoNoCuelgaElCierre:
+    """Reportado en vivo por Jeremy: tras Ctrl+C en modo `--texto`, el
+    proceso se quedaba congelado en vez de cerrar.
+
+    Causa: `asyncio.to_thread(input, ...)` corre en el executor por defecto
+    de asyncio, cuyos hilos **no** son daemon. Si Ctrl+C llega con `input()`
+    todavía bloqueado esperando al teclado, cancelar la tarea no interrumpe
+    la llamada de verdad —el hilo sigue bloqueado—, y un hilo no daemon
+    impide que el intérprete termine (`concurrent.futures` lo espera al
+    salir). `_leer_linea` usa un hilo propio marcado `daemon=True` para que,
+    si nadie vuelve a escribir, el proceso pueda cerrar de todas formas."""
+
+    async def test_el_hilo_de_lectura_es_daemon(self, monkeypatch):
+        creados: list[bool | None] = []
+        hilo_real = threading.Thread
+
+        class HiloEspia(hilo_real):
+            def __init__(self, *a, **kw):  # noqa: ANN002, ANN003
+                creados.append(kw.get("daemon"))
+                super().__init__(*a, **kw)
+
+        monkeypatch.setattr(threading, "Thread", HiloEspia)
+        monkeypatch.setattr("builtins.input", lambda *_a, **_k: "hola")
+
+        resultado = await main._leer_linea("› ")
+
+        assert resultado == "hola"
+        assert creados == [True]
+
+
 class TestElSegundoCtrlCTampocoEnsucia:
     """Reportado en vivo por Jeremy, con el traceback pegado entero: al salir
     con Ctrl+C aparecía un `KeyboardInterrupt` sin manejar, lanzado desde

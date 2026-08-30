@@ -21,6 +21,7 @@ import asyncio
 import contextlib
 import os
 import sys
+import threading
 from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any
@@ -447,11 +448,38 @@ async def _bucle_texto(core: JarvisCore, hud: ConsoleHUD) -> None:
     """Modo teclado: escribes, y J.A.R.V.I.S. contesta con voz y texto."""
     hud.console.print("[dim]Escribe y pulsa Enter. «salir» para terminar.[/dim]\n")
     while True:
-        linea = (await asyncio.to_thread(input, "› ")).strip()
+        linea = (await _leer_linea("› ")).strip()
         if linea.lower() in ("salir", "exit", "quit"):
             return
         if linea:
             await core.responder(linea)
+
+
+async def _leer_linea(prompt: str) -> str:
+    """`input()` bloqueante, pero sin colgar la salida si nadie escribe nada.
+
+    `asyncio.to_thread` corre en el executor por defecto, cuyos hilos **no**
+    son daemon: si Ctrl+C llega mientras `input()` sigue bloqueado esperando
+    al teclado, cancelar la tarea no interrumpe la llamada — sigue bloqueada
+    de verdad en el hilo—, y ese hilo no daemon impide que el intérprete
+    termine (`threading`/`concurrent.futures` lo esperan al salir): el
+    síntoma reportado es justo ese, el proceso "congelado" tras el Ctrl+C.
+    Con un hilo propio marcado `daemon=True`, si nadie vuelve a escribir el
+    proceso puede cerrar de todas formas.
+    """
+    loop = asyncio.get_running_loop()
+    futuro: asyncio.Future[str] = loop.create_future()
+
+    def _leer() -> None:
+        try:
+            linea = input(prompt)
+        except EOFError:
+            linea = ""
+        if not futuro.done():
+            loop.call_soon_threadsafe(futuro.set_result, linea)
+
+    threading.Thread(target=_leer, daemon=True).start()
+    return await futuro
 
 
 def _asegurar_flujos_validos() -> None:
