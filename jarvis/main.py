@@ -33,7 +33,7 @@ from .core.core import JarvisCore
 from .core.gasto import Gasto
 from .core.historial import Historial
 from .core.memory import Memory
-from .core.permissions import PermissionGuard
+from .core.permissions import PermissionGuard, interpretar_respuesta
 from .events import EventBus
 from .ui.bandeja import Bandeja, NullBandeja, crear_bandeja
 from .ui.console import ConsoleHUD
@@ -451,8 +451,21 @@ async def _bucle_texto(core: JarvisCore, hud: ConsoleHUD) -> None:
         linea = (await _leer_linea("› ")).strip()
         if linea.lower() in ("salir", "exit", "quit"):
             return
-        if linea:
-            await core.responder(linea)
+        if not linea:
+            continue
+        if core.confirmacion_pendiente:
+            # Sin esto, un «sí» tecleado aquí no contesta al permiso en
+            # curso: se manda como una pregunta nueva a Claude, mientras el
+            # permiso real sigue esperando una voz que en modo texto nunca
+            # llega, y acaba denegado por el timeout. `responder_confirmacion`
+            # es el mismo camino que ya usa el HUD web para sus botones Sí/No.
+            respuesta = interpretar_respuesta(linea)
+            if respuesta is None:
+                hud.console.print("[dim]¿Sí o no?[/dim]")
+                continue
+            core.responder_confirmacion(respuesta)
+            continue
+        await core.responder(linea)
 
 
 async def _leer_linea(prompt: str) -> str:

@@ -27,6 +27,8 @@ from jarvis.audio.player import NullPlayer
 from jarvis.audio.stt import FakeTranscriber
 from jarvis.audio.wakeword import NullWakeWord
 from jarvis.core.core import JarvisCore
+from jarvis.events import EventBus
+from jarvis.ui.console import ConsoleHUD
 
 from .conftest import ControlledMic, FakeAgent, FakeTTS
 
@@ -266,6 +268,71 @@ class TestLimpiezaFinalAcotada:
             )
         assert resultado.get("valor") == 0
         assert time.monotonic() - t0 < 10.0, "ha tardado más de lo que permite el límite"
+
+
+class _CoreFalsoConConfirmacion:
+    """Doble mínimo: sólo lo que `_bucle_texto` de verdad usa."""
+
+    def __init__(self, *, pendiente: bool) -> None:
+        self._pendiente = pendiente
+        self.preguntas: list[str] = []
+        self.respuestas: list[bool] = []
+
+    @property
+    def confirmacion_pendiente(self) -> bool:
+        return self._pendiente
+
+    def responder_confirmacion(self, permitir: bool) -> bool:
+        self.respuestas.append(permitir)
+        self._pendiente = False
+        return True
+
+    async def responder(self, texto: str) -> None:
+        self.preguntas.append(texto)
+
+
+class TestConfirmacionEnModoTexto:
+    """Reportado en vivo: un «sí» tecleado mientras había un permiso
+    esperando confirmación no lo autorizaba — se mandaba como una pregunta
+    nueva a Claude, y el permiso real (que espera voz) se denegaba solo por
+    el timeout. Sin este enrutado, ningún permiso se puede autorizar nunca
+    en modo `--texto`, aunque el usuario conteste que sí."""
+
+    async def test_un_si_responde_al_permiso_pendiente_no_es_pregunta_nueva(self, monkeypatch):
+        core = _CoreFalsoConConfirmacion(pendiente=True)
+        hud = ConsoleHUD(EventBus())
+
+        respuestas = iter(["sí", "salir"])
+        monkeypatch.setattr("builtins.input", lambda *_a, **_k: next(respuestas))
+
+        await main._bucle_texto(core, hud)
+
+        assert core.respuestas == [True]
+        assert core.preguntas == []
+
+    async def test_una_respuesta_ambigua_no_resuelve_nada_y_sigue_esperando(self, monkeypatch):
+        core = _CoreFalsoConConfirmacion(pendiente=True)
+        hud = ConsoleHUD(EventBus())
+
+        respuestas = iter(["mmm no sé", "salir"])
+        monkeypatch.setattr("builtins.input", lambda *_a, **_k: next(respuestas))
+
+        await main._bucle_texto(core, hud)
+
+        assert core.respuestas == []
+        assert core.preguntas == []
+
+    async def test_sin_confirmacion_pendiente_se_comporta_como_siempre(self, monkeypatch):
+        core = _CoreFalsoConConfirmacion(pendiente=False)
+        hud = ConsoleHUD(EventBus())
+
+        respuestas = iter(["hola", "salir"])
+        monkeypatch.setattr("builtins.input", lambda *_a, **_k: next(respuestas))
+
+        await main._bucle_texto(core, hud)
+
+        assert core.preguntas == ["hola"]
+        assert core.respuestas == []
 
 
 class TestLecturaDeTextoNoCuelgaElCierre:
