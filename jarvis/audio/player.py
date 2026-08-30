@@ -10,10 +10,11 @@ metiendo trozos en una cola: interrumpir es simplemente vaciarla.
 
 from __future__ import annotations
 
-import asyncio
 import queue
 import threading
 from typing import TYPE_CHECKING
+
+from ..hilos import en_hilo_daemon
 
 if TYPE_CHECKING:
     import numpy as np
@@ -97,8 +98,17 @@ class Player:
         return not self._inactivo.is_set()
 
     async def esperar_fin(self, timeout: float | None = None) -> bool:
-        """Espera a que se vacíe la cola. Devuelve False si venció el timeout."""
-        return await asyncio.to_thread(self._inactivo.wait, timeout)
+        """Espera a que se vacíe la cola. Devuelve False si venció el timeout.
+
+        En un hilo `daemon=True` (ver `jarvis/hilos.py`): si Ctrl+C llega
+        mientras Jarvis todavía está hablando, esta espera queda bloqueada
+        de verdad en su hilo hasta que venza el `timeout` — con el executor
+        por defecto de asyncio, ese hilo no es daemon, y el intérprete se
+        queda esperándolo al cerrar. Reportado en vivo: un segundo Ctrl+C
+        durante esa espera salía como `KeyboardInterrupt` sin manejar en
+        `concurrent.futures.thread._python_exit`.
+        """
+        return await en_hilo_daemon(self._inactivo.wait, timeout)
 
     # ── callback de sounddevice (corre en el hilo de audio) ─────────────
     def _callback(self, outdata, frames: int, _time, _status) -> None:  # noqa: ANN001

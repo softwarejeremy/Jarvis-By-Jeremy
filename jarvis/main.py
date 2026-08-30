@@ -21,7 +21,6 @@ import asyncio
 import contextlib
 import os
 import sys
-import threading
 from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any
@@ -35,6 +34,7 @@ from .core.historial import Historial
 from .core.memory import Memory
 from .core.permissions import PermissionGuard, interpretar_respuesta
 from .events import EventBus
+from .hilos import en_hilo_daemon
 from .ui.bandeja import Bandeja, NullBandeja, crear_bandeja
 from .ui.console import ConsoleHUD
 
@@ -445,7 +445,17 @@ def _inicio_orden(argv_crudo: list[str]) -> list[str]:
 
 
 async def _bucle_texto(core: JarvisCore, hud: ConsoleHUD) -> None:
-    """Modo teclado: escribes, y J.A.R.V.I.S. contesta con voz y texto."""
+    """Modo teclado: escribes, y J.A.R.V.I.S. contesta con voz y texto.
+
+    `core.responder()` se lanza sin esperarlo (`asyncio.create_task`, igual
+    que ya hace el HUD web en `jarvis/server/app.py`), a propósito: si se le
+    hiciera `await` aquí, este bucle no podría volver a leer una línea nueva
+    hasta que el turno completo terminara — y un turno con un permiso
+    pendiente no termina hasta que se confirme el permiso, que es
+    precisamente lo que este bucle tendría que leer. Sin esto, ningún
+    permiso se puede autorizar nunca en modo texto: quedó reportado en vivo
+    contestando «sí» una y otra vez sin que sirviera de nada.
+    """
     hud.console.print("[dim]Escribe y pulsa Enter. «salir» para terminar.[/dim]\n")
     while True:
         linea = (await _leer_linea("› ")).strip()
@@ -454,45 +464,31 @@ async def _bucle_texto(core: JarvisCore, hud: ConsoleHUD) -> None:
         if not linea:
             continue
         if core.confirmacion_pendiente:
-            # Sin esto, un «sí» tecleado aquí no contesta al permiso en
-            # curso: se manda como una pregunta nueva a Claude, mientras el
-            # permiso real sigue esperando una voz que en modo texto nunca
-            # llega, y acaba denegado por el timeout. `responder_confirmacion`
-            # es el mismo camino que ya usa el HUD web para sus botones Sí/No.
+            # `responder_confirmacion` es el mismo camino que ya usan los
+            # botones Sí/No del HUD web.
             respuesta = interpretar_respuesta(linea)
             if respuesta is None:
                 hud.console.print("[dim]¿Sí o no?[/dim]")
                 continue
             core.responder_confirmacion(respuesta)
             continue
-        await core.responder(linea)
+        asyncio.create_task(core.responder(linea))
 
 
 async def _leer_linea(prompt: str) -> str:
     """`input()` bloqueante, pero sin colgar la salida si nadie escribe nada.
 
-    `asyncio.to_thread` corre en el executor por defecto, cuyos hilos **no**
-    son daemon: si Ctrl+C llega mientras `input()` sigue bloqueado esperando
-    al teclado, cancelar la tarea no interrumpe la llamada — sigue bloqueada
-    de verdad en el hilo—, y ese hilo no daemon impide que el intérprete
-    termine (`threading`/`concurrent.futures` lo esperan al salir): el
-    síntoma reportado es justo ese, el proceso "congelado" tras el Ctrl+C.
-    Con un hilo propio marcado `daemon=True`, si nadie vuelve a escribir el
-    proceso puede cerrar de todas formas.
+    Ver `jarvis/hilos.py` para el motivo (un hilo del executor por defecto
+    no es daemon, y eso deja el proceso "congelado" tras un Ctrl+C).
     """
-    loop = asyncio.get_running_loop()
-    futuro: asyncio.Future[str] = loop.create_future()
 
-    def _leer() -> None:
+    def _leer() -> str:
         try:
-            linea = input(prompt)
+            return input(prompt)
         except EOFError:
-            linea = ""
-        if not futuro.done():
-            loop.call_soon_threadsafe(futuro.set_result, linea)
+            return ""
 
-    threading.Thread(target=_leer, daemon=True).start()
-    return await futuro
+    return await en_hilo_daemon(_leer)
 
 
 def _asegurar_flujos_validos() -> None:

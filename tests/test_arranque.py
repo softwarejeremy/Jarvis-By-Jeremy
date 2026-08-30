@@ -335,6 +335,58 @@ class TestConfirmacionEnModoTexto:
         assert core.respuestas == []
 
 
+class _CoreFalsoConTurnoLargo:
+    """A diferencia de `_CoreFalsoConConfirmacion`, aquí `responder()` no
+    vuelve solo: se queda esperando a que alguien conteste el permiso que
+    él mismo levanta, exactamente como pasa de verdad con `JarvisCore` y su
+    `confirmar_por_voz`. Sirve para probar que el bucle puede seguir
+    leyendo líneas mientras ese turno sigue en curso."""
+
+    def __init__(self) -> None:
+        self._pendiente = False
+        self.preguntas: list[str] = []
+        self.respuestas: list[bool] = []
+        self._resuelto = asyncio.Event()
+
+    @property
+    def confirmacion_pendiente(self) -> bool:
+        return self._pendiente
+
+    def responder_confirmacion(self, permitir: bool) -> bool:
+        self.respuestas.append(permitir)
+        self._pendiente = False
+        self._resuelto.set()
+        return True
+
+    async def responder(self, texto: str) -> None:
+        self.preguntas.append(texto)
+        self._pendiente = True
+        await self._resuelto.wait()
+
+
+class TestUnTurnoEnCursoNoBloqueaLeerLaConfirmacion:
+    """La causa real, más profunda que el enrutado de `interpretar_respuesta`
+    (que ya se probó en `TestConfirmacionEnModoTexto` con dobles que
+    devuelven al instante): si `_bucle_texto` le hace `await` directo a
+    `core.responder(linea)`, el bucle no puede volver a pedir una línea
+    nueva hasta que ese turno completo termine — y un turno con un permiso
+    pendiente no termina hasta que se conteste ese permiso, que es
+    justamente lo que este bucle tendría que leer mientras tanto. Reportado
+    en vivo: contestar «sí» una y otra vez nunca autorizaba nada."""
+
+    async def test_puede_leer_y_resolver_mientras_el_turno_sigue_vivo(self, monkeypatch):
+        core = _CoreFalsoConTurnoLargo()
+        hud = ConsoleHUD(EventBus())
+
+        respuestas = iter(["abre algo", "sí", "salir"])
+        monkeypatch.setattr("builtins.input", lambda *_a, **_k: next(respuestas))
+
+        await asyncio.wait_for(main._bucle_texto(core, hud), timeout=5.0)
+
+        assert core.preguntas == ["abre algo"]
+        assert core.respuestas == [True]
+
+
 class TestLecturaDeTextoNoCuelgaElCierre:
     """Reportado en vivo por Jeremy: tras Ctrl+C en modo `--texto`, el
     proceso se quedaba congelado en vez de cerrar.

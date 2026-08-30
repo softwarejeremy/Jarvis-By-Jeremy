@@ -10,10 +10,6 @@ prueban con dobles que imitan la cadena `.files().list(...).execute()` de
 
 from __future__ import annotations
 
-import threading
-
-import pytest
-
 from jarvis.tools import google_docs
 
 
@@ -302,35 +298,29 @@ class TestOrquestacionConServicioFalso:
         assert "No he podido buscar" in texto
 
 
-class TestEnHiloDaemon:
-    """Reportado en vivo: un consentimiento OAuth atascado (URI mal
-    configurada en Google Cloud Console, en el caso real) dejaba el proceso
-    congelado tras Ctrl+C. `asyncio.to_thread` corre en el executor por
-    defecto, cuyos hilos no son daemon; `_en_hilo_daemon` usa uno propio
-    para que un Ctrl+C no se quede esperando a que Google conteste."""
+class TestUsaElHiloDaemonCompartido:
+    """El hilo daemon en sí ya está probado a fondo en `test_hilos.py`
+    (reportado en vivo: un consentimiento OAuth atascado dejaba el proceso
+    congelado tras Ctrl+C). Aquí sólo se confirma el cableado: que las cinco
+    herramientas de verdad pasan por `en_hilo_daemon` y no por
+    `asyncio.to_thread` a secas."""
 
-    async def test_usa_un_hilo_daemon(self, monkeypatch):
-        creados: list[bool | None] = []
-        hilo_real = threading.Thread
+    async def test_buscar_pasa_por_en_hilo_daemon(self, settings, monkeypatch):
+        llamadas: list[tuple] = []
 
-        class HiloEspia(hilo_real):
-            def __init__(self, *a, **kw):  # noqa: ANN002, ANN003
-                creados.append(kw.get("daemon"))
-                super().__init__(*a, **kw)
+        async def falso(func, *args):  # noqa: ANN001, ANN002
+            llamadas.append((func, args))
+            return func(*args)
 
-        monkeypatch.setattr(threading, "Thread", HiloEspia)
+        monkeypatch.setattr(google_docs, "en_hilo_daemon", falso)
+        herramienta = next(
+            t for t in google_docs.herramientas_de_google_docs(settings)
+            if t.name == "buscar_doc"
+        )
 
-        resultado = await google_docs._en_hilo_daemon(lambda x: x * 2, 21)
+        await herramienta.handler({"nombre": "algo"})
 
-        assert resultado == 42
-        assert creados == [True]
-
-    async def test_propaga_la_excepcion_tal_cual(self):
-        def explota() -> None:
-            raise ValueError("fallo de verdad")
-
-        with pytest.raises(ValueError, match="fallo de verdad"):
-            await google_docs._en_hilo_daemon(explota)
+        assert llamadas and llamadas[0][0] is google_docs.buscar_doc
 
 
 class TestRegistro:

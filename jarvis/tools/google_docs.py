@@ -31,11 +31,11 @@ aquí la única barrera real es la confirmación por voz.
 
 from __future__ import annotations
 
-import asyncio
-import threading
 from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import tool
+
+from ..hilos import en_hilo_daemon
 
 if TYPE_CHECKING:
     from ..config import Settings
@@ -278,34 +278,6 @@ def crear_doc(settings: Settings, titulo: str, contenido: str = "") -> str:
 #  Registro en MCP
 # ═══════════════════════════════════════════════════════════════════════
 
-async def _en_hilo_daemon(func, *args):  # noqa: ANN001, ANN002, ANN202
-    """Como `asyncio.to_thread`, pero en un hilo que no bloquea el cierre.
-
-    El caso real que motivó esto: el consentimiento OAuth la primera vez
-    puede quedarse escuchando un redirect que nunca llega (`timeout_seconds`
-    en `_credenciales` acota eso, pero no lo elimina: sigue siendo una
-    llamada de red que puede tardar). `asyncio.to_thread` usa el executor
-    por defecto, cuyos hilos no son daemon — con uno de estos atascado, un
-    Ctrl+C deja el proceso "congelado" en el cierre, el mismo síntoma que
-    `_leer_linea` (`jarvis/main.py`) resuelve para la entrada de teclado.
-    """
-    loop = asyncio.get_running_loop()
-    futuro: asyncio.Future[Any] = loop.create_future()
-
-    def _correr() -> None:
-        try:
-            resultado = func(*args)
-        except BaseException as exc:  # noqa: BLE001 - se reenvía tal cual
-            if not futuro.done():
-                loop.call_soon_threadsafe(futuro.set_exception, exc)
-            return
-        if not futuro.done():
-            loop.call_soon_threadsafe(futuro.set_result, resultado)
-
-    threading.Thread(target=_correr, daemon=True).start()
-    return await futuro
-
-
 def herramientas_de_google_docs(settings: Settings) -> list[Any]:
     """Las herramientas de Google Docs, para registrarlas junto al resto.
 
@@ -322,7 +294,7 @@ def herramientas_de_google_docs(settings: Settings) -> list[Any]:
         {"nombre": str},
     )
     async def buscar(args: dict[str, Any]) -> dict[str, Any]:
-        texto = await _en_hilo_daemon(buscar_doc, settings, str(args.get("nombre", "")))
+        texto = await en_hilo_daemon(buscar_doc, settings, str(args.get("nombre", "")))
         return {"content": [{"type": "text", "text": texto}]}
 
     @tool(
@@ -331,7 +303,7 @@ def herramientas_de_google_docs(settings: Settings) -> list[Any]:
         {"nombre": str},
     )
     async def leer(args: dict[str, Any]) -> dict[str, Any]:
-        texto = await _en_hilo_daemon(leer_doc, settings, str(args.get("nombre", "")))
+        texto = await en_hilo_daemon(leer_doc, settings, str(args.get("nombre", "")))
         return {"content": [{"type": "text", "text": texto}]}
 
     @tool(
@@ -341,7 +313,7 @@ def herramientas_de_google_docs(settings: Settings) -> list[Any]:
         {"nombre": str, "texto": str},
     )
     async def anadir(args: dict[str, Any]) -> dict[str, Any]:
-        texto = await _en_hilo_daemon(
+        texto = await en_hilo_daemon(
             anadir_al_doc, settings, str(args.get("nombre", "")), str(args.get("texto", ""))
         )
         return {"content": [{"type": "text", "text": texto}]}
@@ -354,7 +326,7 @@ def herramientas_de_google_docs(settings: Settings) -> list[Any]:
         {"nombre": str, "buscar": str, "reemplazar": str},
     )
     async def reemplazar(args: dict[str, Any]) -> dict[str, Any]:
-        texto = await _en_hilo_daemon(
+        texto = await en_hilo_daemon(
             reemplazar_en_doc,
             settings,
             str(args.get("nombre", "")),
@@ -376,7 +348,7 @@ def herramientas_de_google_docs(settings: Settings) -> list[Any]:
         },
     )
     async def crear(args: dict[str, Any]) -> dict[str, Any]:
-        texto = await _en_hilo_daemon(
+        texto = await en_hilo_daemon(
             crear_doc, settings, str(args.get("titulo", "")), str(args.get("contenido", ""))
         )
         return {"content": [{"type": "text", "text": texto}]}
