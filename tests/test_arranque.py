@@ -268,6 +268,36 @@ class TestLimpiezaFinalAcotada:
         assert time.monotonic() - t0 < 10.0, "ha tardado más de lo que permite el límite"
 
 
+class TestElSegundoCtrlCTampocoEnsucia:
+    """Reportado en vivo por Jeremy, con el traceback pegado entero: al salir
+    con Ctrl+C aparecía un `KeyboardInterrupt` sin manejar, lanzado desde
+    dentro de la propia limpieza (`GetQueuedCompletionStatus`, bajo el bucle
+    Proactor de Windows).
+
+    La causa era `contextlib.suppress(Exception)`: `KeyboardInterrupt` hereda
+    de `BaseException`, no de `Exception`, así que el segundo Ctrl+C —el de
+    quien se impacienta durante los cinco segundos de espera— se colaba justo
+    por el paso que existe para que el cierre sea limpio."""
+
+    def test_un_ctrl_c_durante_la_limpieza_no_sale_como_traceback(self):
+        async def coordinadora() -> int:
+            async def se_queja_al_cancelar() -> None:
+                try:
+                    await asyncio.sleep(1000)
+                except asyncio.CancelledError:
+                    raise KeyboardInterrupt from None
+
+            asyncio.get_running_loop().create_task(
+                se_queja_al_cancelar(), name="impaciente"
+            )
+            await asyncio.sleep(0)
+            return 0
+
+        # Si el `suppress` no atrapa `BaseException`, esta llamada no
+        # devuelve nada: propaga el `KeyboardInterrupt` y el test falla.
+        assert main._correr_hasta_el_final(coordinadora()) == 0
+
+
 class TestElCtrlCSiempreVuelve:
     """Reportado en vivo: `Ctrl+C` dejaba la terminal colgada tras `--web
     --https`. La causa era cancelar las tareas y esperarlas sin límite de

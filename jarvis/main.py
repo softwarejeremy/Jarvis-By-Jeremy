@@ -525,17 +525,23 @@ def _correr_hasta_el_final(corutina: Coroutine[Any, Any, int]) -> int:
             _cerrar_el_loop(loop)
         finally:
             asyncio.set_event_loop(None)
-            loop.close()
+            with contextlib.suppress(BaseException):
+                loop.close()
 
 
 def _cerrar_el_loop(loop: asyncio.AbstractEventLoop) -> None:
+    # `BaseException` y no `Exception`: `KeyboardInterrupt` no hereda de
+    # `Exception`, así que un segundo Ctrl+C —el de quien se impacienta
+    # mientras esperamos estos cinco segundos— se escapaba de aquí y salía
+    # como traceback, justo en el paso que existe para que el cierre sea
+    # limpio. Durante la limpieza final ya no hay nada que salvar: se sale.
     pendientes = asyncio.all_tasks(loop)
     for t in pendientes:
         t.cancel()
     if pendientes:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(BaseException):
             loop.run_until_complete(asyncio.wait(pendientes, timeout=5.0))
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(BaseException):
         loop.run_until_complete(loop.shutdown_asyncgens())
 
 
