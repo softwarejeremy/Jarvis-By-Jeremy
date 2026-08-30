@@ -466,9 +466,11 @@ pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 ```
 
 J.A.R.V.I.S. ya sabe encontrar sus DLL solo (Windows no las busca ahí por su cuenta). Si
-aun así no arranca en GPU, hace falta el CUDA Toolkit completo. Mientras tanto funciona
-igual en CPU, sólo más despacio; con GPU podrías subir a `stt.model_size = "medium"`, más
-preciso en español.
+`python -m jarvis --diag` sigue avisando de GPU sin aprovechar **después** de instalar esos
+paquetes, ya lo detecta y te lo dice de otra forma: el problema no es de instalación, sino
+del driver de NVIDIA o de la versión de CUDA — ahí sí hace falta el CUDA Toolkit completo.
+Mientras tanto funciona igual en CPU, sólo más despacio; con GPU podrías subir a
+`stt.model_size = "medium"`, más preciso en español.
 
 **Se queda en «transcribiendo» y no sale** → Casi siempre es la primera vez que
 transcribe y está **descargando el modelo** (unos 500 MB), que se ve igual que un

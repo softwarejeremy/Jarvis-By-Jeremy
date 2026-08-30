@@ -254,3 +254,169 @@ class TestQuejasDelCli:
         diag._probar_cerebro()
 
         assert "something went wrong" in capsys.readouterr().out
+
+
+class TestPaquetesCudaInstalados:
+    """Sin esto, el aviso de GPU sin aprovechar repetía siempre el mismo
+    `pip install`, incluso después de que Jeremy ya lo hubiera seguido —
+    indistinguible de que el consejo no hubiera servido de nada. Se fuerza
+    la presencia/ausencia vía `sys.modules` en vez de depender de si este
+    sandbox los tiene instalados de verdad.
+    """
+
+    def _simular_instalado(self, monkeypatch, *nombres):
+        import importlib.util
+        import sys
+        import types
+
+        for nombre in nombres:
+            modulo = types.ModuleType(nombre)
+            modulo.__spec__ = importlib.util.spec_from_loader(nombre, loader=None)
+            monkeypatch.setitem(sys.modules, nombre, modulo)
+
+    def _simular_ausente(self, monkeypatch, *nombres):
+        import sys
+
+        for nombre in nombres:
+            monkeypatch.delitem(sys.modules, nombre, raising=False)
+
+    def test_ambos_instalados(self, monkeypatch):
+        self._simular_instalado(monkeypatch, "nvidia.cublas.lib", "nvidia.cudnn.lib")
+
+        assert diag._paquetes_cuda_instalados() is True
+
+    def test_ninguno_instalado(self, monkeypatch):
+        self._simular_ausente(monkeypatch, "nvidia.cublas.lib", "nvidia.cudnn.lib", "nvidia")
+
+        assert diag._paquetes_cuda_instalados() is False
+
+    def test_solo_uno_instalado_no_cuenta(self, monkeypatch):
+        # Un cuBLAS a medio instalar es justo el caso real que motivó esto.
+        self._simular_instalado(monkeypatch, "nvidia.cublas.lib")
+        self._simular_ausente(monkeypatch, "nvidia.cudnn.lib", "nvidia.cudnn")
+
+        assert diag._paquetes_cuda_instalados() is False
+
+
+class _TranscriberDeMentira:
+    """Doble mínimo: sólo lo que `_probar_transcripcion` lee de verdad."""
+
+    def __init__(self, *, device: str, compute_type: str, gpu_detectada: bool) -> None:
+        self.device = device
+        self.compute_type = compute_type
+        self.gpu_detectada = gpu_detectada
+        self.motivo_repliegue: str | None = None
+
+    def cargar(self) -> None:
+        return None
+
+
+class TestAvisoGpuSinAprovechar:
+    """El aviso de `_probar_transcripcion` no puede repetir un `pip install`
+    que ya se siguió: hay que distinguir "falta instalar" de "ya instalado,
+    el problema es otro"."""
+
+    def _forzar_transcriber(self, monkeypatch, doble):
+        monkeypatch.setattr("jarvis.audio.stt.Transcriber", lambda *_a, **_k: doble)
+
+    def test_sin_paquetes_sugiere_instalarlos(self, monkeypatch, capsys):
+        monkeypatch.delitem(__import__("sys").modules, "nvidia.cublas.lib", raising=False)
+        monkeypatch.delitem(__import__("sys").modules, "nvidia.cudnn.lib", raising=False)
+        doble = _TranscriberDeMentira(device="cpu", compute_type="int8", gpu_detectada=True)
+        self._forzar_transcriber(monkeypatch, doble)
+
+        diag._probar_transcripcion()
+
+        salida = capsys.readouterr().out
+        assert "pip install nvidia-cublas-cu12 nvidia-cudnn-cu12" in salida
+
+    def test_con_paquetes_no_repite_el_pip_install(self, monkeypatch, capsys):
+        import importlib.util
+        import sys
+        import types
+
+        for nombre in ("nvidia.cublas.lib", "nvidia.cudnn.lib"):
+            modulo = types.ModuleType(nombre)
+            modulo.__spec__ = importlib.util.spec_from_loader(nombre, loader=None)
+            monkeypatch.setitem(sys.modules, nombre, modulo)
+        doble = _TranscriberDeMentira(device="cpu", compute_type="int8", gpu_detectada=True)
+        self._forzar_transcriber(monkeypatch, doble)
+
+        diag._probar_transcripcion()
+
+        salida = capsys.readouterr().out
+        assert "pip install" not in salida
+        assert "ya están instalados" in salida
+
+    def test_en_gpu_no_dice_nada_de_paquetes(self, monkeypatch, capsys):
+        doble = _TranscriberDeMentira(device="cuda", compute_type="float16", gpu_detectada=True)
+        self._forzar_transcriber(monkeypatch, doble)
+
+        diag._probar_transcripcion()
+
+        salida = capsys.readouterr().out
+        assert "aprovechando" not in salida
+
+
+class _MicTranscriberDeMentira:
+    """Simula el repliegue en la primera transcripción real (el caso de
+    Jeremy: la carga tuvo éxito en GPU, y sólo reventó al transcribir)."""
+
+    def __init__(self, motivo_nuevo: str) -> None:
+        self.motivo_repliegue: str | None = None
+        self._motivo_nuevo = motivo_nuevo
+
+    def _transcribir_sync(self, audio):  # noqa: ANN001, ANN202, ARG002
+        self.motivo_repliegue = self._motivo_nuevo
+        return "hola jarvis"
+
+
+class TestAvisoCudaEnPruebaDeMicrofono:
+    """El repliegue detectado a media transcripción (no al cargar) tiene su
+    propio aviso en `_probar_microfono`, con el mismo fallo: repetía el
+    `pip install` aunque ya se hubiera seguido."""
+
+    def _forzar_sounddevice(self, monkeypatch):
+        import sys
+        import types
+
+        import numpy as np
+
+        falso = types.SimpleNamespace(
+            rec=lambda n, samplerate, channels, dtype: np.full(  # noqa: ARG005
+                (n, channels), 0.5, dtype=dtype
+            ),
+            wait=lambda: None,
+        )
+        monkeypatch.setitem(sys.modules, "sounddevice", falso)
+
+    def test_sin_paquetes_sugiere_instalarlos(self, monkeypatch, capsys):
+        import sys
+
+        monkeypatch.delitem(sys.modules, "nvidia.cublas.lib", raising=False)
+        monkeypatch.delitem(sys.modules, "nvidia.cudnn.lib", raising=False)
+        self._forzar_sounddevice(monkeypatch)
+        doble = _MicTranscriberDeMentira("cuda/float32 falló transcribiendo (...)")
+
+        diag._probar_microfono(doble, segundos=0.1)
+
+        salida = capsys.readouterr().out
+        assert "pip install nvidia-cublas-cu12 nvidia-cudnn-cu12" in salida
+
+    def test_con_paquetes_no_repite_el_pip_install(self, monkeypatch, capsys):
+        import importlib.util
+        import sys
+        import types
+
+        for nombre in ("nvidia.cublas.lib", "nvidia.cudnn.lib"):
+            modulo = types.ModuleType(nombre)
+            modulo.__spec__ = importlib.util.spec_from_loader(nombre, loader=None)
+            monkeypatch.setitem(sys.modules, nombre, modulo)
+        self._forzar_sounddevice(monkeypatch)
+        doble = _MicTranscriberDeMentira("cuda/float32 falló transcribiendo (...)")
+
+        diag._probar_microfono(doble, segundos=0.1)
+
+        salida = capsys.readouterr().out
+        assert "pip install" not in salida
+        assert "no es" in salida and "lo que falta por instalar" in salida

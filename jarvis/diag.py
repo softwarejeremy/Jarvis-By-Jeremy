@@ -388,11 +388,19 @@ def _probar_microfono(transcriber=None, segundos: float = 3.0) -> None:  # noqa:
     # carga sí había ido bien.
     motivo_ahora = getattr(transcriber, "motivo_repliegue", None)
     if motivo_ahora and motivo_ahora != motivo_antes:
-        console.print(
-            f"  {AVISO} {motivo_ahora}\n"
-            "      Pruebe [cyan]pip install nvidia-cublas-cu12 nvidia-cudnn-cu12[/cyan] "
-            "y vuelva a intentarlo."
-        )
+        if _paquetes_cuda_instalados():
+            console.print(
+                f"  {AVISO} {motivo_ahora}\n"
+                "      nvidia-cublas-cu12/nvidia-cudnn-cu12 ya están instalados: no es\n"
+                "      lo que falta por instalar. Revise la versión de CUDA que soporta\n"
+                "      su driver (`nvidia-smi`) o instale el CUDA Toolkit completo."
+            )
+        else:
+            console.print(
+                f"  {AVISO} {motivo_ahora}\n"
+                "      Pruebe [cyan]pip install nvidia-cublas-cu12 nvidia-cudnn-cu12[/cyan] "
+                "y vuelva a intentarlo."
+            )
 
     if texto:
         console.print(f'  {OK} Le he entendido: [bold]«{texto}»[/bold]  [dim]({ms:.0f} ms)[/dim]')
@@ -447,6 +455,24 @@ def _probar_voz() -> None:
         console.print(f"  {FALLO} {exc}")
 
 
+def _paquetes_cuda_instalados() -> bool:
+    """Si `nvidia-cublas-cu12` y `nvidia-cudnn-cu12` ya están instalados.
+
+    Sin esto, el aviso de GPU sin aprovechar repetía siempre el mismo
+    `pip install`, incluso después de que el usuario ya lo hubiera seguido —
+    indistinguible de que el consejo no hubiera servido de nada.
+    """
+    for paquete in ("nvidia.cublas.lib", "nvidia.cudnn.lib"):
+        try:
+            if importlib.util.find_spec(paquete) is None:
+                return False
+        except ModuleNotFoundError:
+            # find_spec exige que el paquete padre ("nvidia") ya exista;
+            # si no, revienta en vez de devolver None.
+            return False
+    return True
+
+
 def _probar_transcripcion():  # noqa: ANN201 - devuelve el Transcriber ya cargado
     """Carga el modelo y explica en qué dispositivo acabó y por qué."""
     _seccion("Modelo de transcripción")
@@ -478,14 +504,27 @@ def _probar_transcripcion():  # noqa: ANN201 - devuelve el Transcriber ya cargad
         console.print(f"  {AVISO} {t.motivo_repliegue}")
 
     if t.gpu_detectada and t.device == "cpu":
-        console.print(
-            f"  {AVISO} Tiene una GPU NVIDIA que no se está aprovechando.\n"
-            "      Pruebe [cyan]pip install nvidia-cublas-cu12 nvidia-cudnn-cu12[/cyan] "
-            "y vuelva a arrancar:\n"
-            "      son más ligeros que el CUDA Toolkit completo y J.A.R.V.I.S. ya sabe\n"
-            "      encontrar sus DLL solo. Si aun así no arranca en GPU, instale el\n"
-            "      CUDA Toolkit completo de NVIDIA (cuDNN 9 para CUDA 12)."
-        )
+        if _paquetes_cuda_instalados():
+            console.print(
+                f"  {AVISO} Tiene una GPU NVIDIA que no se está aprovechando, y "
+                "nvidia-cublas-cu12/nvidia-cudnn-cu12 ya están instalados.\n"
+                "      No es lo que falta por instalar: revise que el driver de "
+                "NVIDIA soporte\n"
+                "      CUDA 12 (`nvidia-smi` lo dice arriba a la derecha) o "
+                "instale el CUDA\n"
+                "      Toolkit completo (cuDNN 9 para CUDA 12) para descartar un "
+                "problema de\n"
+                "      versión en vez de de instalación."
+            )
+        else:
+            console.print(
+                f"  {AVISO} Tiene una GPU NVIDIA que no se está aprovechando.\n"
+                "      Pruebe [cyan]pip install nvidia-cublas-cu12 nvidia-cudnn-cu12[/cyan] "
+                "y vuelva a arrancar:\n"
+                "      son más ligeros que el CUDA Toolkit completo y J.A.R.V.I.S. ya sabe\n"
+                "      encontrar sus DLL solo. Si aun así no arranca en GPU, instale el\n"
+                "      CUDA Toolkit completo de NVIDIA (cuDNN 9 para CUDA 12)."
+            )
     elif not t.gpu_detectada and s.stt.model_size in ("medium", "large-v3"):
         console.print(
             f"  {AVISO} Ese modelo en CPU va lento. Considere "
