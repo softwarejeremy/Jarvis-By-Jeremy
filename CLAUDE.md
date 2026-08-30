@@ -59,6 +59,29 @@ Piezas que sólo se entienden leyendo más de un archivo a la vez:
   `asyncio.run()` no está acotada en tiempo — hace falta un límite en dos
   capas distintas (el `finally` de `_arrancar_todo` y el cierre del loop),
   no sólo una, o un Ctrl+C puede dejar la terminal colgada.
+- **El truco del `contenedor`** (`jarvis/main.py:_construir()`): el guardián
+  de permisos y las herramientas propias necesitan poder hablar con el
+  núcleo (`confirmar`, `avisar`) antes de que `JarvisCore` exista. Un
+  `contenedor: dict[str, JarvisCore] = {}` se rellena con
+  `contenedor["core"] = core` sólo después de construirlo, y los closures
+  leen `contenedor.get("core")` en el momento de la llamada, no de la
+  construcción — así se rompe la dependencia circular. Cualquier nueva
+  herramienta que necesite hablar sola más tarde (como los temporizadores)
+  reutiliza este mismo patrón en vez de inventar uno nuevo.
+- **Servidor MCP único** (`jarvis/tools/memory_tool.py:construir_servidor_jarvis`):
+  memoria, sistema y temporizadores se registran todas en un solo
+  `create_sdk_mcp_server(name="jarvis", ...)` — dos servidores con el mismo
+  nombre se pisarían, y nombres distintos obligarían a mantener dos listas
+  de permisos para nada. Toda herramienta propia nueva se añade a la lista
+  `tools` de esa misma función, y su nombre a `PROPIAS_AUTOMATICAS`
+  (`jarvis/core/permissions.py`) si no necesita confirmación hablada.
+- **Temporizadores** (`jarvis/tools/temporizadores.py`): a diferencia del
+  resto de herramientas (que devuelven texto y ya), `poner_temporizador`
+  lanza un `asyncio.create_task` que espera y luego llama a `avisar()` — no
+  bloquea el turno. Decisión deliberada: no sobreviven un reinicio (viven
+  sólo como tarea en memoria) y no hay "cancelar temporizador" — ninguna de
+  las dos se pidió y ambas añadirían estado a rastrear sin necesidad real
+  todavía.
 
 ## Contexto del proyecto
 
@@ -104,6 +127,20 @@ Piezas que sólo se entienden leyendo más de un archivo a la vez:
   (rutina programada de esta sesión) que comprueba CI y comentarios cada
   hora aproximadamente y se reprograma sola y en silencio si no hay cambios.
   Es normal ver notificaciones de ese tipo sin que el usuario haya escrito nada.
+- **"Capacidades reales" (completo, CI verde)**: las tres piezas del plan
+  aprobado están implementadas — estado del equipo (`jarvis/tools/sistema.py:
+  estado_del_equipo`, usa `psutil`), control de medios (`sistema.py:
+  controlar_medios`, mismo patrón por SO que el volumen) y temporizadores/
+  alarmas (`jarvis/tools/temporizadores.py`, ver Arquitectura). Cada una con
+  su commit separado, mutación de tests confirmada y README actualizado.
+- **Lo que sigue, sin empezar todavía** (orden de prioridad de Jeremy, a la
+  espera de que él confirme pasar a la siguiente fase — no arrancar solo):
+  1. **Memoria que se llena sola**: hoy `recordar`/`olvidar` dependen de que
+     Claude decida guardar algo explícitamente; falta que el propio núcleo
+     proponga o detecte datos duraderos sin que el usuario lo pida.
+  2. **Verificar la bandeja en Windows**: confirmar visualmente con Jeremy
+     que el icono, el menú y la pausa funcionan de verdad en su equipo —
+     esto no se puede probar desde el sandbox (ver limitaciones abajo).
 
 ## Reglas globales
 
