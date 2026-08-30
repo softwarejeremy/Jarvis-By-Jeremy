@@ -250,7 +250,7 @@ async def _avisar_de_la_otra_instancia(
         if not args.sin_navegador:
             from .ui.navegador import abrir
 
-            await asyncio.to_thread(abrir, huella.url)
+            await asyncio.to_thread(abrir, huella.url, navegador=s.ui.navegador)
     else:
         hud.console.print(
             "  [dim]No sé cuál es su HUD; probablemente arrancó sin --web.[/dim]"
@@ -349,7 +349,8 @@ async def _arrancar_todo(
             # terminar el programa en cuanto el navegador se abre.
             accesorias.append(
                 asyncio.create_task(
-                    abrir_cuando_escuche(url_local, args.puerto), name="navegador"
+                    abrir_cuando_escuche(url_local, args.puerto, navegador=s.ui.navegador),
+                    name="navegador",
                 )
             )
 

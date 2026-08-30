@@ -151,6 +151,15 @@ que no, añade `--sin-navegador`). Verás el reactor cambiando de color según l
 haciendo, la conversación apareciendo palabra a palabra, las herramientas que usa y el
 gasto acumulado.
 
+Por defecto intenta abrirlo en **Chrome** aunque no sea tu navegador por defecto de
+Windows; si no lo encuentra, cae al de siempre (normalmente Edge). Para ir siempre al
+navegador por defecto, pon en `config.toml`:
+
+```toml
+[ui]
+navegador = "sistema"
+```
+
 Es el **mismo núcleo**: lo que digas por voz sale en la pantalla, y lo que escribas
 en la pantalla lo contesta por voz. No son dos programas.
 

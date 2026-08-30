@@ -40,6 +40,12 @@ user_name = "señor"
 # extra_dirs = ["C:/Users/TU-USUARIO/Documents"]
 
 
+[ui]
+# chrome   -> intenta abrir Chrome; si no lo encuentra, cae al de por defecto
+# sistema  -> va directo al navegador por defecto de Windows (Edge, normalmente)
+navegador = "chrome"
+
+
 [tts]
 # edge   -> neuronal, gratis, sin cuenta, necesita internet   (recomendado)
 # sapi   -> voz de Windows, peor calidad, funciona sin internet

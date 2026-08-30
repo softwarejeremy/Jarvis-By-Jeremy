@@ -75,6 +75,14 @@ class TTSSettings(BaseModel):
     elevenlabs_model: str = "eleven_multilingual_v2"
 
 
+class UiSettings(BaseModel):
+    """El HUD web y cómo se abre."""
+
+    # "chrome" lo intenta primero y cae al navegador por defecto si no está;
+    # "sistema" va directo al de por defecto (Edge, normalmente en Windows).
+    navegador: Literal["chrome", "sistema"] = "chrome"
+
+
 class STTSettings(BaseModel):
     """Cómo escucha J.A.R.V.I.S."""
 
@@ -216,6 +224,7 @@ class Settings(BaseSettings):
     workspace: Path = PROJECT_ROOT
 
     agent: AgentSettings = Field(default_factory=AgentSettings)
+    ui: UiSettings = Field(default_factory=UiSettings)
     tts: TTSSettings = Field(default_factory=TTSSettings)
     stt: STTSettings = Field(default_factory=STTSettings)
     vad: VADSettings = Field(default_factory=VADSettings)

@@ -85,7 +85,7 @@ class TestInstanciaUnica:
         )
         abiertas = []
         monkeypatch.setattr(
-            "jarvis.ui.navegador.abrir", lambda u: abiertas.append(u) or True
+            "jarvis.ui.navegador.abrir", lambda u, **_k: abiertas.append(u) or True
         )
 
         assert await main._main_async(_args(), []) == 0
@@ -101,7 +101,7 @@ class TestInstanciaUnica:
         )
         abiertas = []
         monkeypatch.setattr(
-            "jarvis.ui.navegador.abrir", lambda u: abiertas.append(u) or True
+            "jarvis.ui.navegador.abrir", lambda u, **_k: abiertas.append(u) or True
         )
 
         assert await main._main_async(_args(sin_navegador=True), []) == 0
