@@ -13,6 +13,7 @@ todas las combinaciones sin necesitar una GPU.
 
 from __future__ import annotations
 
+import os
 import sys
 import types
 
@@ -292,12 +293,19 @@ class TestRegistrarDllCudaEnWindows:
     seguía fallando, porque cuBLAS depende en tiempo de ejecución de
     `cudart64_12.dll` — un tercer paquete (`nvidia-cuda-runtime-cu12`) que
     nadie había pedido instalar.
+
+    Capa 5, con las tres piezas ya puestas: `ctypes.WinDLL` cargaba las
+    cuatro DLL sin problema y `ctranslate2` seguía sin encontrarlas en la
+    transcripción real. `add_dll_directory` sólo cuenta para el modo de
+    búsqueda "seguro" que usa `ctypes`; `ctranslate2` en C++ no lo usa y
+    sólo mira el `PATH` clásico — de ahí que ahora también se registre ahí.
     """
 
     def test_fuera_de_windows_no_hace_nada(self, monkeypatch, tmp_path):
         # Con los paquetes "instalados" de mentira: si el filtro de
         # plataforma no cortara aquí, sí que habría algo que registrar.
         monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setenv("PATH", "algo_que_ya_habia")
         llamadas = []
         monkeypatch.setattr(
             "os.add_dll_directory", lambda ruta: llamadas.append(ruta), raising=False
@@ -309,9 +317,11 @@ class TestRegistrarDllCudaEnWindows:
         _registrar_dll_cuda_en_windows()
 
         assert llamadas == []
+        assert os.environ["PATH"] == "algo_que_ya_habia"
 
     def test_en_windows_anade_las_tres_carpetas_bin(self, monkeypatch, tmp_path):
         monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setenv("PATH", "algo_que_ya_habia")
         llamadas = []
         monkeypatch.setattr(
             "os.add_dll_directory", lambda ruta: llamadas.append(ruta), raising=False
@@ -324,14 +334,30 @@ class TestRegistrarDllCudaEnWindows:
 
         _registrar_dll_cuda_en_windows()
 
-        assert sorted(llamadas) == sorted(
-            [str(raiz_cublas / "bin"), str(raiz_cudnn / "bin"), str(raiz_cudart / "bin")]
-        )
+        esperadas = [str(raiz_cublas / "bin"), str(raiz_cudnn / "bin"), str(raiz_cudart / "bin")]
+        assert sorted(llamadas) == sorted(esperadas)
+        # add_dll_directory (modo seguro, lo usa ctypes) Y el PATH clásico
+        # (lo usa ctranslate2 en C++): las dos redes, no sólo una.
+        path_tras = os.environ["PATH"].split(os.pathsep)
+        assert all(ruta in path_tras for ruta in esperadas)
+        assert path_tras[-1] == "algo_que_ya_habia", "lo que ya había en PATH no se pierde"
+
+    def test_llamar_dos_veces_no_duplica_el_path(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setenv("PATH", "algo_que_ya_habia")
+        monkeypatch.setattr("os.add_dll_directory", lambda _ruta: None, raising=False)
+        _instalar_paquete_namespace_falso(monkeypatch, "nvidia.cublas", tmp_path)
+
+        _registrar_dll_cuda_en_windows()
+        _registrar_dll_cuda_en_windows()
+
+        assert os.environ["PATH"].count("nvidia_cublas") == 1
 
     def test_en_windows_sin_los_paquetes_no_revienta(self, monkeypatch):
         # Fuerza la ausencia con sys.modules en vez de confiar en que este
         # sandbox no los tenga instalados de verdad.
         monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setenv("PATH", "algo_que_ya_habia")
         llamadas = []
         monkeypatch.setattr(
             "os.add_dll_directory", lambda ruta: llamadas.append(ruta), raising=False
@@ -343,12 +369,14 @@ class TestRegistrarDllCudaEnWindows:
         _registrar_dll_cuda_en_windows()  # no debe lanzar
 
         assert llamadas == []
+        assert os.environ["PATH"] == "algo_que_ya_habia"
 
     def test_paquete_instalado_sin_carpeta_bin_no_registra_nada(self, monkeypatch, tmp_path):
         # El paquete a medio instalar (o una versión que cambie la
         # estructura otra vez): que no haya `bin/` no debe reventar, sólo
         # no registrar nada para ese paquete.
         monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setenv("PATH", "algo_que_ya_habia")
         llamadas = []
         monkeypatch.setattr(
             "os.add_dll_directory", lambda ruta: llamadas.append(ruta), raising=False
@@ -360,12 +388,17 @@ class TestRegistrarDllCudaEnWindows:
         _registrar_dll_cuda_en_windows()  # no debe lanzar
 
         assert llamadas == []
+        assert os.environ["PATH"] == "algo_que_ya_habia"
 
-    def test_sin_add_dll_directory_no_revienta(self, monkeypatch, tmp_path):
+    def test_sin_add_dll_directory_tambien_registra_en_path(self, monkeypatch, tmp_path):
         # Python en Linux nunca ha tenido `os.add_dll_directory`; se fuerza su
-        # ausencia explícitamente para no depender de esa casualidad.
+        # ausencia explícitamente para no depender de esa casualidad. Aun
+        # así el PATH —la otra red— debe quedar registrado.
         monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setenv("PATH", "algo_que_ya_habia")
         monkeypatch.delattr("os.add_dll_directory", raising=False)
-        _instalar_paquete_namespace_falso(monkeypatch, "nvidia.cublas", tmp_path)
+        raiz = _instalar_paquete_namespace_falso(monkeypatch, "nvidia.cublas", tmp_path)
 
         _registrar_dll_cuda_en_windows()  # no debe lanzar
+
+        assert str(raiz / "bin") in os.environ["PATH"].split(os.pathsep)

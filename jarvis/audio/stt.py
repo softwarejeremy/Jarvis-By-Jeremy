@@ -80,18 +80,32 @@ def _registrar_dll_cuda_en_windows() -> None:
     Linux) — ver el docstring del módulo. `cuda_runtime` da `cudart64_12.dll`,
     del que `cublas` depende para inicializarse; sin él, cuBLAS carga bien
     aislado pero la transcripción real revienta igual.
+
+    Por partida doble, `add_dll_directory` **y** el `PATH` del proceso:
+    `add_dll_directory` sólo cuenta para quien cargue DLL en modo de
+    búsqueda "seguro" (que es lo que hace `ctypes` desde Python 3.8, por
+    diseño de esa misma API). Verificado en vivo: con esa carpeta ya
+    registrada, `ctypes.WinDLL("cublas64_12.dll")` cargaba perfecto y
+    `ctranslate2` seguía sin encontrarlo en la transcripción real — su
+    carga en C++ no pasa por ese modo seguro, así que sólo mira el `PATH`
+    clásico. De ahí la redundancia: cubre los dos mecanismos de carga.
     """
     if sys.platform != "win32":
         return
     anadir_directorio_dll = getattr(os, "add_dll_directory", None)
-    if anadir_directorio_dll is None:
-        return
+    rutas_path = os.environ.get("PATH", "").split(os.pathsep)
     for paquete in ("nvidia.cublas", "nvidia.cudnn", "nvidia.cuda_runtime"):
         with contextlib.suppress(Exception):
             modulo = importlib.import_module(paquete)
             carpeta_bin = Path(next(iter(modulo.__path__))) / "bin"
-            if carpeta_bin.is_dir():
+            if not carpeta_bin.is_dir():
+                continue
+            if anadir_directorio_dll is not None:
                 anadir_directorio_dll(str(carpeta_bin))
+            ruta = str(carpeta_bin)
+            if ruta not in rutas_path:
+                rutas_path.insert(0, ruta)
+    os.environ["PATH"] = os.pathsep.join(rutas_path)
 
 # Precisiones aceptables por dispositivo, de mejor a peor. En GPU manda la
 # velocidad; en CPU, int8 es el punto dulce entre rapidez y calidad.
