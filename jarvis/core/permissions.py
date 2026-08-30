@@ -47,6 +47,10 @@ PROPIAS_AUTOMATICAS = frozenset({
     "mcp__jarvis__estado_del_equipo",
     "mcp__jarvis__control_medios",
     "mcp__jarvis__poner_temporizador",
+    # Buscar y leer un Google Doc no tocan nada del usuario; añadir,
+    # reemplazar y crear sí, así que ésas pasan por el "sí" hablado.
+    "mcp__jarvis__buscar_doc",
+    "mcp__jarvis__leer_doc",
 })
 
 # Campos donde las distintas herramientas guardan la ruta que van a tocar.
@@ -180,6 +184,18 @@ def describir_para_voz(tool_name: str, input_data: dict[str, Any]) -> str:
 
     if tool_name == "mcp__jarvis__bloquear_pantalla":
         return "Voy a bloquear la pantalla. ¿Lo autoriza?"
+
+    if tool_name == "mcp__jarvis__anadir_al_doc":
+        nombre = str(input_data.get("nombre", "")).strip() or "un documento"
+        return f"Voy a añadir texto al documento {nombre}. ¿Lo autoriza?"
+
+    if tool_name == "mcp__jarvis__reemplazar_en_doc":
+        nombre = str(input_data.get("nombre", "")).strip() or "un documento"
+        return f"Voy a reemplazar texto en el documento {nombre}. ¿Lo autoriza?"
+
+    if tool_name == "mcp__jarvis__crear_doc":
+        titulo = str(input_data.get("titulo", "")).strip() or "uno nuevo"
+        return f"Voy a crear el documento de Google {titulo}. ¿Lo autoriza?"
 
     return f"Voy a usar la herramienta {tool_name}. ¿Lo autoriza?"
 

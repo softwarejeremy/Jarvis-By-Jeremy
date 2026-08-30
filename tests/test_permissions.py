@@ -214,3 +214,21 @@ class TestDescribirHerramientasPropias:
         d = describir_para_voz("mcp__jarvis__bloquear_pantalla", {})
         assert "bloquear la pantalla" in d
         assert "mcp__jarvis__" not in d
+
+    def test_anadir_al_doc_dice_qué_documento(self):
+        d = describir_para_voz("mcp__jarvis__anadir_al_doc", {"nombre": "Notas"})
+        assert "Notas" in d
+        assert "mcp__jarvis__" not in d
+
+    def test_reemplazar_en_doc_dice_qué_documento(self):
+        d = describir_para_voz("mcp__jarvis__reemplazar_en_doc", {"nombre": "Notas"})
+        assert "Notas" in d
+        assert "mcp__jarvis__" not in d
+
+    def test_crear_doc_dice_qué_título(self):
+        d = describir_para_voz("mcp__jarvis__crear_doc", {"titulo": "Plan de viaje"})
+        assert "Plan de viaje" in d
+        assert "mcp__jarvis__" not in d
+
+    def test_crear_doc_sin_titulo_no_queda_raro(self):
+        assert "uno nuevo" in describir_para_voz("mcp__jarvis__crear_doc", {})

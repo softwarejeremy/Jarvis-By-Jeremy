@@ -82,6 +82,15 @@ class TTSSettings(BaseModel):
     xtts_dispositivo: Literal["auto", "cuda", "cpu"] = "auto"
 
 
+class GoogleSettings(BaseModel):
+    """Acceso a Google Docs. Ver el README para sacar el client_secret.json."""
+
+    # Ruta al client_secret.json de un proyecto de Google Cloud Console con
+    # las APIs de Docs y Drive activadas. No es un secreto de los que van en
+    # `.env`: es la ruta a un archivo, no una cadena que guardar en texto.
+    client_secret_path: str = ""
+
+
 class UiSettings(BaseModel):
     """El HUD web y cómo se abre."""
 
@@ -232,6 +241,7 @@ class Settings(BaseSettings):
 
     agent: AgentSettings = Field(default_factory=AgentSettings)
     ui: UiSettings = Field(default_factory=UiSettings)
+    google: GoogleSettings = Field(default_factory=GoogleSettings)
     tts: TTSSettings = Field(default_factory=TTSSettings)
     stt: STTSettings = Field(default_factory=STTSettings)
     vad: VADSettings = Field(default_factory=VADSettings)

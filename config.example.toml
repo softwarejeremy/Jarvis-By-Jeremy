@@ -46,6 +46,13 @@ user_name = "señor"
 navegador = "chrome"
 
 
+[google]
+# Ruta al client_secret.json de un proyecto de Google Cloud Console con las
+# APIs de Docs y Drive activadas (ver el README, sección "Google Docs").
+# No es un secreto de los que van en .env: es la ruta a un archivo.
+# client_secret_path = "C:/Users/TU-USUARIO/.jarvis/client_secret.json"
+
+
 [tts]
 # edge   -> neuronal, gratis, sin cuenta, necesita internet   (recomendado)
 # sapi   -> voz de Windows, peor calidad, funciona sin internet

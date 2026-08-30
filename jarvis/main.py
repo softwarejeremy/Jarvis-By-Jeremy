@@ -152,7 +152,7 @@ def _construir(args: argparse.Namespace, s: Settings, bus: EventBus):  # noqa: A
         agent = Agent(
             s,
             can_use_tool=PermissionGuard(s, confirmar, bus),
-            mcp_servers={"jarvis": construir_servidor_jarvis(memoria, avisar)},
+            mcp_servers={"jarvis": construir_servidor_jarvis(memoria, avisar, s)},
             memoria=memoria.cargar(),
         )
 

@@ -46,6 +46,11 @@ xtts = [
     "coqui-tts>=0.24",
     "torch>=2.1",
 ]
+google = [
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.2",
+    "google-auth-httplib2>=0.2",
+]
 web = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",

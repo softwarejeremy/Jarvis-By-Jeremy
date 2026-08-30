@@ -317,6 +317,9 @@ Además de leer y escribir archivos y buscar en la web, tiene herramientas propi
 | «abre Spotify», «abre mi carpeta de proyectos» | Lanza programas, archivos o webs | **Sí** |
 | «bloquea la pantalla» | Bloquea la sesión | **Sí** |
 | «recuerda que…», «olvida lo de…» | Memoria de largo plazo | No |
+| «busca mi doc de notas», «lee el documento de la reunión» | Busca y lee un Google Doc | No |
+| «añade esto a mi doc de notas», «cambia X por Y en el documento» | Edita un Google Doc existente | **Sí** |
+| «crea un documento de Google llamado…» | Crea un Google Doc nuevo | **Sí** |
 
 El panel **Memoria** del HUD web muestra lo que tiene anotado, organizado por
 categoría, con un botón para olvidar cada entrada sin tener que pedírselo por
@@ -330,6 +333,43 @@ subir es su propia confirmación. Lanzar programas no cumple eso, así que pregu
 autorices. Todo comando de shell se lee en voz alta antes de ejecutarse; si pudiera
 «abrir» una consola, bastaría eso para ejecutar cualquier cosa sin que nadie la
 enunciara, y el sistema de permisos entero quedaría sin efecto.
+
+### Google Docs
+
+Buscar y leer un documento no preguntan nada; añadir texto, reemplazar un
+fragmento o crear un documento nuevo sí, exactamente igual que abrir un
+programa — es un cambio real en algo tuyo.
+
+**Configuración, una sola vez:**
+
+```powershell
+pip install -e ".[google]"
+```
+
+1. Entra a [console.cloud.google.com](https://console.cloud.google.com) y crea
+   un proyecto (o usa uno que ya tengas).
+2. En **APIs y servicios → Biblioteca**, activa **Google Docs API** y
+   **Google Drive API**.
+3. En **APIs y servicios → Pantalla de consentimiento OAuth**, elige **Externo**,
+   rellena lo mínimo (nombre de la app, tu correo) y añádete a ti mismo como
+   *usuario de prueba* — no hace falta publicarla para uso personal.
+4. En **APIs y servicios → Credenciales → Crear credenciales → ID de cliente de
+   OAuth**, tipo **Aplicación de escritorio**. Descarga el JSON.
+5. Guarda ese archivo donde quieras (por ejemplo, junto a tu `config.toml`) y
+   apunta a él en `config.toml`:
+
+```toml
+[google]
+client_secret_path = "C:/Users/TU-USUARIO/.jarvis/client_secret.json"
+```
+
+La primera vez que le pidas algo de Google Docs, se abre el navegador para que
+autorices el acceso; las siguientes veces el token se refresca solo, guardado
+junto a la memoria en tu carpeta de datos (`~/.jarvis/google_token.json`,
+nunca en `.env` ni en el repositorio).
+
+Busca los documentos **por nombre exacto**: «mis notas de la reunión» tiene
+que coincidir con el título tal cual está en Drive.
 
 ---
 
@@ -429,7 +469,7 @@ jarvis/
 ├── hotkey.py         Push-to-talk global
 ├── instancia.py      Un solo J.A.R.V.I.S. por equipo (cerrojo por socket)
 ├── inicio.py         Arranque automático con Windows
-├── tools/            Memoria y control del equipo, expuestos a Claude vía MCP
+├── tools/            Memoria, control del equipo y Google Docs, expuestos a Claude vía MCP
 ├── server/           HUD web: FastAPI + WebSocket, micrófono del navegador y TLS
 └── ui/
     ├── console.py    HUD de terminal
@@ -544,6 +584,7 @@ Implementado y probado:
 - [x] Diagnóstico y modos demo/simulación
 - [x] HUD web, accesible desde el móvil, con micrófono del navegador
 - [x] Herramientas de sistema: volumen, medios, abrir programas, bloquear, estado del equipo, temporizadores
+- [x] Google Docs: buscar, leer, añadir, reemplazar y crear documentos
 - [x] Integración continua
 - [x] Arranque automático con Windows
 - [x] Icono en la bandeja del sistema, pausa del micrófono e instancia única

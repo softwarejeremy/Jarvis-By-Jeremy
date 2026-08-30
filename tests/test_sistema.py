@@ -280,14 +280,14 @@ class TestRegistro:
             "hora", "estado_del_equipo",
         }
 
-    def test_van_en_el_mismo_servidor_que_la_memoria(self, tmp_path):
+    def test_van_en_el_mismo_servidor_que_la_memoria(self, tmp_path, settings):
         # Dos servidores MCP con el mismo nombre se pisarían.
         from jarvis.core.memory import Memory
         from jarvis.tools.memory_tool import construir_servidor_jarvis
 
         async def avisar(_texto: str) -> None: ...
 
-        servidor = construir_servidor_jarvis(Memory(tmp_path), avisar)
+        servidor = construir_servidor_jarvis(Memory(tmp_path), avisar, settings)
         assert servidor["name"] == "jarvis"
 
 
@@ -302,9 +302,18 @@ class TestPermisos:
         assert "mcp__jarvis__estado_del_equipo" in PROPIAS_AUTOMATICAS
         assert "mcp__jarvis__control_medios" in PROPIAS_AUTOMATICAS
         assert "mcp__jarvis__poner_temporizador" in PROPIAS_AUTOMATICAS
+        assert "mcp__jarvis__buscar_doc" in PROPIAS_AUTOMATICAS
+        assert "mcp__jarvis__leer_doc" in PROPIAS_AUTOMATICAS
 
     def test_abrir_y_bloquear_siempre_preguntan(self):
         from jarvis.core.permissions import PROPIAS_AUTOMATICAS
 
         assert "mcp__jarvis__abrir" not in PROPIAS_AUTOMATICAS
         assert "mcp__jarvis__bloquear_pantalla" not in PROPIAS_AUTOMATICAS
+
+    def test_escribir_en_google_docs_siempre_pregunta(self):
+        from jarvis.core.permissions import PROPIAS_AUTOMATICAS
+
+        assert "mcp__jarvis__anadir_al_doc" not in PROPIAS_AUTOMATICAS
+        assert "mcp__jarvis__reemplazar_en_doc" not in PROPIAS_AUTOMATICAS
+        assert "mcp__jarvis__crear_doc" not in PROPIAS_AUTOMATICAS
