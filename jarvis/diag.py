@@ -391,14 +391,16 @@ def _probar_microfono(transcriber=None, segundos: float = 3.0) -> None:  # noqa:
         if _paquetes_cuda_instalados():
             console.print(
                 f"  {AVISO} {motivo_ahora}\n"
-                "      nvidia-cublas-cu12/nvidia-cudnn-cu12 ya están instalados: no es\n"
-                "      lo que falta por instalar. Revise la versión de CUDA que soporta\n"
-                "      su driver (`nvidia-smi`) o instale el CUDA Toolkit completo."
+                f"      Los tres paquetes de CUDA por pip ({_PAQUETES_CUDA_PIP}) ya están\n"
+                "      instalados: no es lo que falta por instalar. Revise la versión de "
+                "CUDA\n"
+                "      que soporta su driver (`nvidia-smi`) o instale el CUDA Toolkit "
+                "completo."
             )
         else:
             console.print(
                 f"  {AVISO} {motivo_ahora}\n"
-                "      Pruebe [cyan]pip install nvidia-cublas-cu12 nvidia-cudnn-cu12[/cyan] "
+                f"      Pruebe [cyan]pip install {_PAQUETES_CUDA_PIP}[/cyan] "
                 "y vuelva a intentarlo."
             )
 
@@ -455,18 +457,27 @@ def _probar_voz() -> None:
         console.print(f"  {FALLO} {exc}")
 
 
+_PAQUETES_CUDA_PIP = "nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cuda-runtime-cu12"
+
+
 def _paquetes_cuda_instalados() -> bool:
-    """Si `nvidia-cublas-cu12` y `nvidia-cudnn-cu12` ya están instalados.
+    """Si los tres paquetes de CUDA por pip ya están instalados.
 
     Sin esto, el aviso de GPU sin aprovechar repetía siempre el mismo
     `pip install`, incluso después de que el usuario ya lo hubiera seguido —
     indistinguible de que el consejo no hubiera servido de nada.
+
+    Los tres, no dos: `nvidia-cuda-runtime-cu12` (`cudart64_12.dll`) se
+    descubrió en vivo — cuBLAS/cuDNN cargaban perfectamente solos y la
+    transcripción real seguía reventando, porque cuBLAS depende de ese
+    runtime para inicializarse y nadie lo había pedido instalar.
     """
-    # nvidia.cublas/nvidia.cudnn, no ".lib": ese subnombre es la estructura
-    # del wheel de Linux. En Windows el paquete deja bin/ e include/, nunca
-    # lib/ (verificado con Get-ChildItem en una instalación real) — buscar
-    # ".lib" ahí falla siempre, instalados o no. Ver jarvis/audio/stt.py.
-    for paquete in ("nvidia.cublas", "nvidia.cudnn"):
+    # nvidia.cublas/nvidia.cudnn/nvidia.cuda_runtime, no ".lib": ese subnombre
+    # es la estructura del wheel de Linux. En Windows el paquete deja bin/ e
+    # include/, nunca lib/ (verificado con Get-ChildItem en una instalación
+    # real) — buscar ".lib" ahí falla siempre, instalados o no. Ver
+    # jarvis/audio/stt.py.
+    for paquete in ("nvidia.cublas", "nvidia.cudnn", "nvidia.cuda_runtime"):
         try:
             if importlib.util.find_spec(paquete) is None:
                 return False
@@ -510,8 +521,9 @@ def _probar_transcripcion():  # noqa: ANN201 - devuelve el Transcriber ya cargad
     if t.gpu_detectada and t.device == "cpu":
         if _paquetes_cuda_instalados():
             console.print(
-                f"  {AVISO} Tiene una GPU NVIDIA que no se está aprovechando, y "
-                "nvidia-cublas-cu12/nvidia-cudnn-cu12 ya están instalados.\n"
+                f"  {AVISO} Tiene una GPU NVIDIA que no se está aprovechando, y los "
+                "tres paquetes\n"
+                f"      de CUDA por pip ({_PAQUETES_CUDA_PIP}) ya están instalados.\n"
                 "      No es lo que falta por instalar: revise que el driver de "
                 "NVIDIA soporte\n"
                 "      CUDA 12 (`nvidia-smi` lo dice arriba a la derecha) o "
@@ -523,7 +535,7 @@ def _probar_transcripcion():  # noqa: ANN201 - devuelve el Transcriber ya cargad
         else:
             console.print(
                 f"  {AVISO} Tiene una GPU NVIDIA que no se está aprovechando.\n"
-                "      Pruebe [cyan]pip install nvidia-cublas-cu12 nvidia-cudnn-cu12[/cyan] "
+                f"      Pruebe [cyan]pip install {_PAQUETES_CUDA_PIP}[/cyan] "
                 "y vuelva a arrancar:\n"
                 "      son más ligeros que el CUDA Toolkit completo y J.A.R.V.I.S. ya sabe\n"
                 "      encontrar sus DLL solo. Si aun así no arranca en GPU, instale el\n"

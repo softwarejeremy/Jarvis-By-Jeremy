@@ -282,10 +282,16 @@ class TestRegistrarDllCudaEnWindows:
     `nvidia-cudnn-cu12` instalados vía pip, `ctranslate2` en Windows sólo
     añade su propia carpeta al buscador de DLL, no las de esos paquetes.
 
-    Y capa 3, descubierta en vivo con `Get-ChildItem` en su Windows real:
-    el wheel de Windows deja las DLL en `bin/`, no en `lib/` como el de
-    Linux — buscar `nvidia.cublas.lib` no encontraba nada NUNCA en Windows,
-    con o sin los paquetes puestos.
+    Capa 3, descubierta en vivo con `Get-ChildItem` en su Windows real: el
+    wheel de Windows deja las DLL en `bin/`, no en `lib/` como el de Linux —
+    buscar `nvidia.cublas.lib` no encontraba nada NUNCA en Windows, con o
+    sin los paquetes puestos.
+
+    Capa 4, descubierta a mano con `ctypes.WinDLL` una vez arreglada la
+    capa 3: cuBLAS y cuDNN cargaban perfectamente solos y la transcripción
+    seguía fallando, porque cuBLAS depende en tiempo de ejecución de
+    `cudart64_12.dll` — un tercer paquete (`nvidia-cuda-runtime-cu12`) que
+    nadie había pedido instalar.
     """
 
     def test_fuera_de_windows_no_hace_nada(self, monkeypatch, tmp_path):
@@ -298,12 +304,13 @@ class TestRegistrarDllCudaEnWindows:
         )
         _instalar_paquete_namespace_falso(monkeypatch, "nvidia.cublas", tmp_path)
         _instalar_paquete_namespace_falso(monkeypatch, "nvidia.cudnn", tmp_path)
+        _instalar_paquete_namespace_falso(monkeypatch, "nvidia.cuda_runtime", tmp_path)
 
         _registrar_dll_cuda_en_windows()
 
         assert llamadas == []
 
-    def test_en_windows_anade_las_carpetas_bin_de_cublas_y_cudnn(self, monkeypatch, tmp_path):
+    def test_en_windows_anade_las_tres_carpetas_bin(self, monkeypatch, tmp_path):
         monkeypatch.setattr(sys, "platform", "win32")
         llamadas = []
         monkeypatch.setattr(
@@ -311,11 +318,14 @@ class TestRegistrarDllCudaEnWindows:
         )
         raiz_cublas = _instalar_paquete_namespace_falso(monkeypatch, "nvidia.cublas", tmp_path)
         raiz_cudnn = _instalar_paquete_namespace_falso(monkeypatch, "nvidia.cudnn", tmp_path)
+        raiz_cudart = _instalar_paquete_namespace_falso(
+            monkeypatch, "nvidia.cuda_runtime", tmp_path
+        )
 
         _registrar_dll_cuda_en_windows()
 
         assert sorted(llamadas) == sorted(
-            [str(raiz_cublas / "bin"), str(raiz_cudnn / "bin")]
+            [str(raiz_cublas / "bin"), str(raiz_cudnn / "bin"), str(raiz_cudart / "bin")]
         )
 
     def test_en_windows_sin_los_paquetes_no_revienta(self, monkeypatch):
@@ -328,6 +338,7 @@ class TestRegistrarDllCudaEnWindows:
         )
         monkeypatch.setitem(sys.modules, "nvidia.cublas", None)
         monkeypatch.setitem(sys.modules, "nvidia.cudnn", None)
+        monkeypatch.setitem(sys.modules, "nvidia.cuda_runtime", None)
 
         _registrar_dll_cuda_en_windows()  # no debe lanzar
 

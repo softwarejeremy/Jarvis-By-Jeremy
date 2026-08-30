@@ -39,6 +39,18 @@ pero el de **Windows** las deja en `nvidia/cublas/bin/` (verificado con
 `lib/`). Buscar `nvidia.cublas.lib` como si fuera Linux falla siempre en
 Windows —silenciosamente, dentro del `contextlib.suppress`— y por eso la
 carpeta nunca llegaba a registrarse aunque los paquetes sí estuvieran puestos.
+
+## La tercera pieza: `cudart64_12.dll`
+
+Con `bin/` ya registrado, `cublas64_12.dll` y `cudnn64_9.dll` cargan solos
+(comprobado a mano con `ctypes.WinDLL`) y aun así la transcripción real
+seguía fallando con el mismo mensaje. `cublas` depende en tiempo de
+ejecución del runtime de CUDA (`cudart64_12.dll`), que **no** viene con
+`nvidia-cublas-cu12` ni con `nvidia-cudnn-cu12` — es un tercer paquete,
+`nvidia-cuda-runtime-cu12`, que nunca se había pedido instalar. Sin él,
+`ctranslate2` reporta el fallo apuntando a `cublas64_12.dll` aunque ese
+archivo cargue perfectamente por su cuenta: el mensaje nombra el símbolo
+que no pudo resolver, no necesariamente el archivo que falta de verdad.
 """
 
 from __future__ import annotations
@@ -58,21 +70,23 @@ if TYPE_CHECKING:
 
 
 def _registrar_dll_cuda_en_windows() -> None:
-    """Añade al buscador de DLLs las carpetas `bin/` de cuBLAS/cuDNN
+    """Añade al buscador de DLLs las carpetas `bin/` de cuBLAS/cuDNN/CUDA
     instaladas vía pip, si las hay. No hace nada fuera de Windows ni si no
     están instaladas.
 
-    `nvidia.cublas`/`nvidia.cudnn` son paquetes de espacio de nombres: no
-    tienen `__file__`, sólo `__path__` (la carpeta real en disco). Ahí dentro
-    va `bin/` en Windows, nunca `lib/` (eso es Linux) — ver el docstring del
-    módulo.
+    `nvidia.cublas`/`nvidia.cudnn`/`nvidia.cuda_runtime` son paquetes de
+    espacio de nombres: no tienen `__file__`, sólo `__path__` (la carpeta
+    real en disco). Ahí dentro va `bin/` en Windows, nunca `lib/` (eso es
+    Linux) — ver el docstring del módulo. `cuda_runtime` da `cudart64_12.dll`,
+    del que `cublas` depende para inicializarse; sin él, cuBLAS carga bien
+    aislado pero la transcripción real revienta igual.
     """
     if sys.platform != "win32":
         return
     anadir_directorio_dll = getattr(os, "add_dll_directory", None)
     if anadir_directorio_dll is None:
         return
-    for paquete in ("nvidia.cublas", "nvidia.cudnn"):
+    for paquete in ("nvidia.cublas", "nvidia.cudnn", "nvidia.cuda_runtime"):
         with contextlib.suppress(Exception):
             modulo = importlib.import_module(paquete)
             carpeta_bin = Path(next(iter(modulo.__path__))) / "bin"

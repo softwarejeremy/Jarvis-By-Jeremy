@@ -458,11 +458,13 @@ aun así aparece, fuerza CPU poniendo `device = "cpu"` en la sección `[stt]` de
 `config.toml`.
 
 **Tengo GPU NVIDIA pero va en CPU**, o **"Library cublas64_12.dll is not found or cannot
-be loaded"** al transcribir → Falta cuBLAS/cuDNN 9 para CUDA 12. Antes de instalar el CUDA
-Toolkit completo de NVIDIA (varios GB), prueba lo más ligero:
+be loaded"** al transcribir → Faltan cuBLAS, cuDNN 9 y el runtime de CUDA para CUDA 12 —
+los tres, no sólo los dos primeros: cuBLAS depende del runtime para inicializarse, y sin
+él carga bien aislado pero falla igual en la primera transcripción real. Antes de instalar
+el CUDA Toolkit completo de NVIDIA (varios GB), prueba lo más ligero:
 
 ```powershell
-pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cuda-runtime-cu12
 ```
 
 J.A.R.V.I.S. ya sabe encontrar sus DLL solo (Windows no las busca ahí por su cuenta). Si
