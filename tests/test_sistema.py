@@ -285,7 +285,9 @@ class TestRegistro:
         from jarvis.core.memory import Memory
         from jarvis.tools.memory_tool import construir_servidor_jarvis
 
-        servidor = construir_servidor_jarvis(Memory(tmp_path))
+        async def avisar(_texto: str) -> None: ...
+
+        servidor = construir_servidor_jarvis(Memory(tmp_path), avisar)
         assert servidor["name"] == "jarvis"
 
 
@@ -299,6 +301,7 @@ class TestPermisos:
         assert "mcp__jarvis__hora" in PROPIAS_AUTOMATICAS
         assert "mcp__jarvis__estado_del_equipo" in PROPIAS_AUTOMATICAS
         assert "mcp__jarvis__control_medios" in PROPIAS_AUTOMATICAS
+        assert "mcp__jarvis__poner_temporizador" in PROPIAS_AUTOMATICAS
 
     def test_abrir_y_bloquear_siempre_preguntan(self):
         from jarvis.core.permissions import PROPIAS_AUTOMATICAS

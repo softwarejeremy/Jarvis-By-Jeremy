@@ -137,6 +137,13 @@ def _construir(args: argparse.Namespace, s: Settings, bus: EventBus):  # noqa: A
             return False
         return await core.confirmar_por_voz(pregunta)
 
+    # Mismo truco que `confirmar`: un temporizador se dispara mucho después
+    # de registrarse la herramienta, cuando el núcleo ya existe de sobra.
+    async def avisar(texto: str) -> None:
+        core = contenedor.get("core")
+        if core is not None:
+            await core._decir_ahora(texto)
+
     if args.demo or not s.has_api_key:
         agent = DemoAgent()
     else:
@@ -145,7 +152,7 @@ def _construir(args: argparse.Namespace, s: Settings, bus: EventBus):  # noqa: A
         agent = Agent(
             s,
             can_use_tool=PermissionGuard(s, confirmar, bus),
-            mcp_servers={"jarvis": construir_servidor_jarvis(memoria)},
+            mcp_servers={"jarvis": construir_servidor_jarvis(memoria, avisar)},
             memoria=memoria.cargar(),
         )
 

@@ -15,14 +15,19 @@ from typing import Any
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from ..core.memory import CATEGORIAS, Memory
+from .temporizadores import Avisador, herramientas_de_temporizador
 
 
-def construir_servidor_jarvis(memoria: Memory) -> Any:
+def construir_servidor_jarvis(memoria: Memory, avisar: Avisador) -> Any:
     """El servidor MCP con TODAS las herramientas propias de J.A.R.V.I.S.
 
-    Memoria y sistema van juntas en un único servidor porque dos con el mismo
-    nombre se pisarían, y usar dos nombres distintos obligaría a mantener dos
-    listas de permisos para nada.
+    Memoria, sistema y temporizadores van juntas en un único servidor porque
+    dos con el mismo nombre se pisarían, y usar dos nombres distintos
+    obligaría a mantener dos listas de permisos para nada.
+
+    `avisar`: ver el docstring de `jarvis/tools/temporizadores.py` — hace que
+    el núcleo hable cuando se cumpla un temporizador, aunque no se le haya
+    pedido nada en ese turno.
     """
 
     lista_categorias = ", ".join(f"{k} ({v})" for k, v in CATEGORIAS.items())
@@ -76,5 +81,11 @@ def construir_servidor_jarvis(memoria: Memory) -> Any:
     return create_sdk_mcp_server(
         name="jarvis",
         version="1.0.0",
-        tools=[recordar, olvidar, consultar_memoria, *herramientas_de_sistema()],
+        tools=[
+            recordar,
+            olvidar,
+            consultar_memoria,
+            *herramientas_de_sistema(),
+            *herramientas_de_temporizador(avisar),
+        ],
     )
