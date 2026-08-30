@@ -271,6 +271,36 @@ Todo tiene valores por defecto razonables. Los ajustes que más se tocan:
 | Se interrumpe a sí mismo | `audio.barge_in = false` |
 | Quieres otra voz | `tts.voice` (hay una lista en el archivo) |
 
+### Voz de mejor calidad: XTTS-v2 (necesita GPU NVIDIA)
+
+edge-tts (el motor por defecto) es gratis y suena bien, pero si tienes una GPU
+NVIDIA hay una opción notablemente más natural, y también gratis: **XTTS-v2**,
+que corre en tu propio equipo e incluso puede clonar una voz a partir de un
+audio de referencia corto.
+
+```powershell
+pip install -e ".[xtts]"
+```
+
+Instala PyTorch y descarga el modelo (~2 GB) la primera vez que se use. Luego,
+en `config.toml`:
+
+```toml
+[tts]
+engine = "xtts"
+```
+
+Cosas a tener en cuenta:
+- **Necesita GPU para ser rápido.** En CPU cada frase tarda varios segundos —
+  peor que el silencio que se intenta evitar. `python -m jarvis --diag` te
+  dice si detecta CUDA y cuánta VRAM libre hay.
+- **Comparte VRAM con la transcripción** (faster-whisper usa la misma GPU). Si
+  se quedan sin memoria entre los dos, baja `tts.xtts_dispositivo = "cpu"` o
+  usa un modelo de `stt.model_size` más pequeño.
+- **Clonar una voz**: pon la ruta a un WAV corto (~6 segundos) tuyo, o de
+  cualquier grabación sobre la que tengas derechos, en `tts.xtts_speaker_wav`.
+  Sin eso, usa un hablante preentrenado del propio modelo.
+
 ---
 
 ## Qué puede hacer con tu equipo
@@ -395,7 +425,7 @@ jarvis/
 │   ├── vad.py        Silero: cuándo empiezas y acabas de hablar
 │   ├── stt.py        faster-whisper, en local
 │   ├── player.py     Reproducción interrumpible
-│   └── tts/          edge · sapi · elevenlabs
+│   └── tts/          edge · sapi · elevenlabs · xtts
 ├── hotkey.py         Push-to-talk global
 ├── instancia.py      Un solo J.A.R.V.I.S. por equipo (cerrojo por socket)
 ├── inicio.py         Arranque automático con Windows
@@ -505,7 +535,7 @@ ya usa Ctrl+Alt+J, cambia `hotkey.combo`.
 Implementado y probado:
 
 - [x] Conversación con Claude, con personalidad y streaming
-- [x] Voz (edge-tts, SAPI, ElevenLabs) con reproducción interrumpible
+- [x] Voz (edge-tts, SAPI, ElevenLabs, XTTS-v2 con GPU) con reproducción interrumpible
 - [x] Escucha: captura, VAD, transcripción local
 - [x] Wake word "Hey Jarvis" y push-to-talk
 - [x] Barge-in: puedes interrumpirle hablando

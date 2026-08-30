@@ -417,9 +417,40 @@ def _probar_microfono(transcriber=None, segundos: float = 3.0) -> None:  # noqa:
         )
 
 
+def _diagnosticar_xtts() -> None:
+    """XTTS-v2 es el motor con más formas de fallar por hardware: sin esto,
+    un "no suena" con `engine = "xtts"` no dice si falta PyTorch, si no hay
+    CUDA, o si la GPU se quedó sin memoria compartiéndola con Whisper."""
+    try:
+        import torch
+    except ImportError:
+        console.print(
+            f"  {FALLO} PyTorch no está instalado — hace falta el extra `xtts` "
+            '(`pip install -e ".[xtts]"`).'
+        )
+        return
+
+    if not torch.cuda.is_available():
+        console.print(
+            f"  {FALLO} CUDA no disponible: XTTS correrá en CPU, "
+            "mucho más lento por frase."
+        )
+        return
+
+    nombre = torch.cuda.get_device_name(0)
+    libre, total = torch.cuda.mem_get_info(0)
+    console.print(
+        f"  {OK} GPU: [cyan]{nombre}[/cyan] — "
+        f"{libre / 2**30:.1f} GB libres de {total / 2**30:.1f} GB"
+    )
+
+
 def _probar_voz() -> None:
     _seccion("Prueba de voz")
     s = load_settings()
+
+    if s.tts.engine == "xtts":
+        _diagnosticar_xtts()
 
     async def hablar() -> None:
         from .audio.player import Player

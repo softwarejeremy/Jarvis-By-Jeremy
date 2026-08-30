@@ -49,7 +49,12 @@ navegador = "chrome"
 [tts]
 # edge   -> neuronal, gratis, sin cuenta, necesita internet   (recomendado)
 # sapi   -> voz de Windows, peor calidad, funciona sin internet
-# elevenlabs -> la mejor, de pago, necesita ELEVENLABS_API_KEY en .env
+# elevenlabs -> la mejor de las de pago, necesita ELEVENLABS_API_KEY en .env
+# xtts   -> local y gratis, la más natural de todas, pero necesita GPU y
+#           PyTorch (`pip install -e ".[xtts]"`) — en CPU tarda demasiado
+#           por frase. Comparte VRAM con la transcripción (faster-whisper):
+#           si se pelean por memoria, baja xtts_dispositivo a "cpu" o el
+#           modelo de [stt] a uno más pequeño.
 engine = "edge"
 
 # Voces de edge-tts en español:
@@ -62,6 +67,14 @@ voice = "es-MX-JorgeNeural"
 # J.A.R.V.I.S. suena mejor un poco acelerado y algo más grave.
 rate = "+8%"
 pitch = "-4Hz"
+
+# Sólo si engine = "xtts":
+xtts_idioma = "es"
+# Ruta a un WAV corto (~6s) para clonar una voz concreta. Vacío = usa un
+# hablante preentrenado del propio modelo.
+# xtts_speaker_wav = "C:/Users/TU-USUARIO/Documents/mi_voz.wav"
+# auto | cuda | cpu
+xtts_dispositivo = "auto"
 
 
 [stt]

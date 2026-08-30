@@ -61,7 +61,7 @@ class AgentSettings(BaseModel):
 class TTSSettings(BaseModel):
     """Cómo suena J.A.R.V.I.S."""
 
-    engine: Literal["edge", "sapi", "elevenlabs"] = "edge"
+    engine: Literal["edge", "sapi", "elevenlabs", "xtts"] = "edge"
     # Voces recomendadas para edge-tts:
     #   es-MX-JorgeNeural   (masculina, mexicana, grave)   <- por defecto
     #   es-ES-AlvaroNeural  (masculina, España)
@@ -73,6 +73,13 @@ class TTSSettings(BaseModel):
     pitch: str = "-4Hz"
     elevenlabs_voice_id: str = ""
     elevenlabs_model: str = "eleven_multilingual_v2"
+    # XTTS-v2: necesita GPU para ser rápido (extra `xtts`, ver README).
+    xtts_idioma: str = "es"
+    # WAV corto (~6s) para clonar una voz. Vacío = hablante preentrenado.
+    xtts_speaker_wav: str = ""
+    # "auto" usa CUDA si torch la detecta, si no CPU. Fuerza "cpu" si la
+    # VRAM se pelea con la transcripción (faster-whisper usa la misma GPU).
+    xtts_dispositivo: Literal["auto", "cuda", "cpu"] = "auto"
 
 
 class UiSettings(BaseModel):

@@ -40,6 +40,12 @@ voice = [
 ]
 elevenlabs = ["httpx>=0.27"]
 windows = ["pywin32>=306"]  # voz SAPI de respaldo, 100% offline
+xtts = [
+    # Fork mantenido por la comunidad: Coqui como empresa cerró y el paquete
+    # original (`TTS`) ya no recibe actualizaciones.
+    "coqui-tts>=0.24",
+    "torch>=2.1",
+]
 web = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",

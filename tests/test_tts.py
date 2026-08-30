@@ -13,6 +13,7 @@ en que esta máquina no sea Windows por casualidad.
 from __future__ import annotations
 
 import sys
+import types
 
 import numpy as np
 import pytest
@@ -52,6 +53,23 @@ class TestCrearMotor:
         monkeypatch.setitem(sys.modules, "win32com.client", None)
         settings.tts.engine = "sapi"
         assert isinstance(crear_motor(settings), EdgeTTS)
+
+    def test_xtts_sin_dependencia_cae_a_edge(self, settings, monkeypatch):
+        # La CI no instala PyTorch/TTS (extra `xtts`, pesado a propósito):
+        # este es el único camino de XTTS que se puede probar allí de verdad.
+        monkeypatch.setitem(sys.modules, "torch", None)
+        monkeypatch.setitem(sys.modules, "TTS", None)
+        monkeypatch.setitem(sys.modules, "TTS.api", None)
+        settings.tts.engine = "xtts"
+        assert isinstance(crear_motor(settings), EdgeTTS)
+
+    def test_xtts_con_dependencia_da_xtts(self, settings, monkeypatch):
+        _instalar_xtts_falso(monkeypatch)
+        settings.tts.engine = "xtts"
+
+        from jarvis.audio.tts.xtts import XttsTTS
+
+        assert isinstance(crear_motor(settings), XttsTTS)
 
 
 class TestDecodificarAPcm:
@@ -203,3 +221,147 @@ class TestElevenLabsTTS:
     async def test_cerrar_sin_haber_sintetizado_no_revienta(self, settings):
         motor = self._motor(settings)
         await motor.cerrar()  # nunca se creó cliente; no debe lanzar
+
+
+class _ModeloXttsFalso:
+    """Sustituye a `TTS.api.TTS`: nunca se carga un modelo real en la suite."""
+
+    instancias = 0
+
+    def __init__(self, _nombre: str) -> None:
+        _ModeloXttsFalso.instancias += 1
+        self.dispositivo: str | None = None
+        self.llamadas: list[dict] = []
+        self.reventar = False
+        tts_model = types.SimpleNamespace()
+        tts_model.float = lambda: setattr(tts_model, "fp32_forzado", True)
+        self.synthesizer = types.SimpleNamespace(
+            output_sample_rate=24_000, tts_model=tts_model
+        )
+
+    def to(self, dispositivo: str) -> _ModeloXttsFalso:
+        self.dispositivo = dispositivo
+        return self
+
+    def tts(self, **kwargs) -> list[float]:  # noqa: ANN003
+        self.llamadas.append(kwargs)
+        if self.reventar:
+            raise RuntimeError("el modelo no pudo sintetizar")
+        return [0.0, 0.5, -0.5, 1.0]
+
+
+def _instalar_xtts_falso(monkeypatch, *, cuda_disponible: bool = False) -> None:
+    """Registra `torch` y `TTS.api` falsos en `sys.modules`.
+
+    Cargar el modelo real de XTTS-v2 (~2 GB, necesita PyTorch) no tiene
+    sentido en una suite que corre en cada commit: esto prueba la lógica de
+    `XttsTTS` (carga única, texto vacío, fp32 en CUDA, propagación de
+    errores) sin tocar nada pesado.
+    """
+    _ModeloXttsFalso.instancias = 0
+
+    torch_falso = types.ModuleType("torch")
+    torch_falso.cuda = types.SimpleNamespace(is_available=lambda: cuda_disponible)
+    monkeypatch.setitem(sys.modules, "torch", torch_falso)
+
+    tts_api_falso = types.ModuleType("TTS.api")
+    tts_api_falso.TTS = _ModeloXttsFalso
+    tts_falso = types.ModuleType("TTS")
+    tts_falso.api = tts_api_falso
+    monkeypatch.setitem(sys.modules, "TTS", tts_falso)
+    monkeypatch.setitem(sys.modules, "TTS.api", tts_api_falso)
+
+
+class TestXttsTTS:
+    def _motor(self, settings, **cambios):  # noqa: ANN001, ANN201
+        from jarvis.audio.tts.xtts import XttsTTS
+
+        settings.tts.engine = "xtts"
+        for clave, valor in cambios.items():
+            setattr(settings.tts, clave, valor)
+        return XttsTTS(settings)
+
+    async def test_texto_vacio_no_llama_al_modelo(self, settings, monkeypatch):
+        _instalar_xtts_falso(monkeypatch)
+        motor = self._motor(settings)
+
+        resultado = await motor.sintetizar("   ")
+
+        assert len(resultado) == 0
+        assert motor._modelo.llamadas == []
+
+    async def test_la_salida_es_pcm_int16(self, settings, monkeypatch):
+        _instalar_xtts_falso(monkeypatch)
+        motor = self._motor(settings)
+
+        resultado = await motor.sintetizar("hola, señor")
+
+        assert resultado.dtype == np.int16
+        assert len(resultado) == 4  # las 4 muestras que devuelve el doble
+
+    async def test_el_modelo_se_carga_una_sola_vez(self, settings, monkeypatch):
+        _instalar_xtts_falso(monkeypatch)
+        motor = self._motor(settings)
+
+        await motor.sintetizar("uno")
+        await motor.sintetizar("dos")
+        await motor.sintetizar("tres")
+
+        assert _ModeloXttsFalso.instancias == 1
+        assert len(motor._modelo.llamadas) == 3
+
+    async def test_un_fallo_del_modelo_no_se_traga_en_silencio(self, settings, monkeypatch):
+        _instalar_xtts_falso(monkeypatch)
+        motor = self._motor(settings)
+        motor._modelo.reventar = True
+
+        with pytest.raises(RuntimeError):
+            await motor.sintetizar("hola")
+
+    async def test_sin_speaker_wav_usa_hablante_preentrenado(self, settings, monkeypatch):
+        _instalar_xtts_falso(monkeypatch)
+        motor = self._motor(settings, xtts_speaker_wav="")
+
+        await motor.sintetizar("hola")
+
+        llamada = motor._modelo.llamadas[0]
+        assert "speaker" in llamada
+        assert "speaker_wav" not in llamada
+
+    async def test_con_speaker_wav_clona_esa_voz(self, settings, monkeypatch, tmp_path):
+        _instalar_xtts_falso(monkeypatch)
+        referencia = tmp_path / "mi_voz.wav"
+        motor = self._motor(settings, xtts_speaker_wav=str(referencia))
+
+        await motor.sintetizar("hola")
+
+        llamada = motor._modelo.llamadas[0]
+        assert llamada["speaker_wav"] == str(referencia)
+        assert "speaker" not in llamada
+
+    def test_dispositivo_auto_usa_cpu_sin_cuda(self, settings, monkeypatch):
+        _instalar_xtts_falso(monkeypatch, cuda_disponible=False)
+        motor = self._motor(settings, xtts_dispositivo="auto")
+
+        assert motor._dispositivo == "cpu"
+        assert motor._modelo.dispositivo == "cpu"
+
+    def test_dispositivo_auto_usa_cuda_si_hay(self, settings, monkeypatch):
+        _instalar_xtts_falso(monkeypatch, cuda_disponible=True)
+        motor = self._motor(settings, xtts_dispositivo="auto")
+
+        assert motor._dispositivo == "cuda"
+
+    def test_en_cuda_fuerza_fp32(self, settings, monkeypatch):
+        # Pascal (GTX 10xx, sin tensor cores) es más lento en fp16 que en
+        # fp32: al revés que en GPUs modernas, aquí NO toca hacer `.half()`.
+        _instalar_xtts_falso(monkeypatch, cuda_disponible=True)
+        motor = self._motor(settings, xtts_dispositivo="cuda")
+
+        assert motor._modelo.synthesizer.tts_model.fp32_forzado is True
+
+    def test_en_cpu_no_toca_precision(self, settings, monkeypatch):
+        _instalar_xtts_falso(monkeypatch, cuda_disponible=False)
+        motor = self._motor(settings, xtts_dispositivo="cpu")
+
+        assert not hasattr(motor._modelo.synthesizer.tts_model, "fp32_forzado")

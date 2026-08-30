@@ -81,4 +81,12 @@ def crear_motor(settings) -> TTSEngine:  # noqa: ANN001 - evita un import circul
         except Exception:  # noqa: BLE001 - pywin32 no está o no es Windows
             pass
 
+    if engine == "xtts":
+        try:
+            from .xtts import XttsTTS
+
+            return XttsTTS(settings)
+        except Exception:  # noqa: BLE001 - falta PyTorch/TTS (extra `xtts`)
+            pass
+
     return EdgeTTS(settings)
