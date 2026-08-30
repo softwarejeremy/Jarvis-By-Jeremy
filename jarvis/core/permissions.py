@@ -45,6 +45,7 @@ PROPIAS_AUTOMATICAS = frozenset({
     "mcp__jarvis__hora",
     "mcp__jarvis__volumen",
     "mcp__jarvis__estado_del_equipo",
+    "mcp__jarvis__control_medios",
 })
 
 # Campos donde las distintas herramientas guardan la ruta que van a tocar.

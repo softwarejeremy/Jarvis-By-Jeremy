@@ -63,6 +63,74 @@ class TestVolumen:
         assert len(enviados) == 3
 
 
+class TestControlDeMedios:
+    @pytest.mark.parametrize("accion", ["reproducir_pausar", "siguiente", "anterior"])
+    def test_acepta_las_tres_acciones(self, accion, monkeypatch):
+        llamadas = []
+        monkeypatch.setattr(sistema, "SISTEMA", "Windows")
+        monkeypatch.setattr(
+            sistema, "_medios_windows",
+            lambda a: llamadas.append(a) or "hecho",
+        )
+        assert sistema.controlar_medios(accion) == "hecho"
+        assert llamadas == [accion]
+
+    def test_rechaza_una_accion_inventada(self):
+        respuesta = sistema.controlar_medios("repetir")
+        assert "No sé hacer" in respuesta
+
+    def test_en_un_sistema_desconocido_lo_dice(self, monkeypatch):
+        monkeypatch.setattr(sistema, "SISTEMA", "Plan9")
+        assert "Plan9" in sistema.controlar_medios("siguiente")
+
+    @pytest.mark.parametrize("accion", ["reproducir_pausar", "siguiente", "anterior"])
+    def test_en_windows_manda_el_codigo_de_esa_accion(self, accion, monkeypatch):
+        # Mismo mecanismo que el volumen: una sola pulsación, un código por
+        # acción — no basta con probar una sola, o dos acciones podrían
+        # compartir código sin que ningún test se enterara.
+        enviados = []
+        monkeypatch.setattr(sistema, "SISTEMA", "Windows")
+
+        class FakeUser32:
+            @staticmethod
+            def GetForegroundWindow():  # noqa: N802
+                return 1
+
+            @staticmethod
+            def SendMessageW(*a):  # noqa: N802
+                enviados.append(a)
+
+        class FakeWindll:
+            user32 = FakeUser32()
+
+        import ctypes
+
+        monkeypatch.setattr(ctypes, "windll", FakeWindll(), raising=False)
+        sistema.controlar_medios(accion)
+        assert len(enviados) == 1
+        assert enviados[0][3] == sistema._APPCOMMAND_MEDIOS[accion]
+
+    def test_los_tres_codigos_son_distintos(self):
+        codigos = list(sistema._APPCOMMAND_MEDIOS.values())
+        assert len(set(codigos)) == len(codigos)
+
+    def test_en_linux_sin_playerctl_lo_dice(self, monkeypatch):
+        monkeypatch.setattr(sistema, "SISTEMA", "Linux")
+        monkeypatch.setattr(sistema.shutil, "which", lambda _: None)
+        assert "playerctl" in sistema.controlar_medios("siguiente")
+
+    def test_en_linux_con_playerctl_llama_la_orden_correcta(self, monkeypatch):
+        monkeypatch.setattr(sistema, "SISTEMA", "Linux")
+        monkeypatch.setattr(sistema.shutil, "which", lambda _: "/usr/bin/playerctl")
+        ordenes = []
+        monkeypatch.setattr(
+            sistema.subprocess, "run",
+            lambda cmd, **_kw: ordenes.append(cmd),
+        )
+        sistema.controlar_medios("anterior")
+        assert ordenes == [["playerctl", "previous"]]
+
+
 class TestAbrir:
     @pytest.mark.parametrize(
         "peligroso",
@@ -208,7 +276,8 @@ class TestRegistro:
     def test_las_herramientas_quedan_registradas(self):
         nombres = {t.name for t in sistema.herramientas_de_sistema()}
         assert nombres == {
-            "volumen", "abrir", "bloquear_pantalla", "hora", "estado_del_equipo",
+            "volumen", "control_medios", "abrir", "bloquear_pantalla",
+            "hora", "estado_del_equipo",
         }
 
     def test_van_en_el_mismo_servidor_que_la_memoria(self, tmp_path):
@@ -229,6 +298,7 @@ class TestPermisos:
         assert "mcp__jarvis__volumen" in PROPIAS_AUTOMATICAS
         assert "mcp__jarvis__hora" in PROPIAS_AUTOMATICAS
         assert "mcp__jarvis__estado_del_equipo" in PROPIAS_AUTOMATICAS
+        assert "mcp__jarvis__control_medios" in PROPIAS_AUTOMATICAS
 
     def test_abrir_y_bloquear_siempre_preguntan(self):
         from jarvis.core.permissions import PROPIAS_AUTOMATICAS

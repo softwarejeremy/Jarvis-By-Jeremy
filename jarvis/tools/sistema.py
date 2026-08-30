@@ -117,6 +117,64 @@ def _confirmacion(accion: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  Control de medios
+# ═══════════════════════════════════════════════════════════════════════
+
+# Mismo mecanismo que el volumen (WM_APPCOMMAND), otros códigos: son las
+# mismas teclas multimedia del teclado, así que funciona con cualquier
+# reproductor en primer plano, no uno concreto.
+_APPCOMMAND_MEDIOS = {
+    "reproducir_pausar": 0x0E << 16,
+    "siguiente": 0x0B << 16,
+    "anterior": 0x0C << 16,
+}
+
+
+def controlar_medios(accion: str) -> str:
+    """Reproduce/pausa, o cambia de pista."""
+    if accion not in _APPCOMMAND_MEDIOS:
+        return f"No sé hacer «{accion}» con la reproducción."
+
+    if SISTEMA == "Windows":
+        return _medios_windows(accion)
+    if SISTEMA == "Linux":
+        return _medios_linux(accion)
+    return f"No sé controlar la reproducción en {SISTEMA}."
+
+
+def _medios_windows(accion: str) -> str:
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    ventana = user32.GetForegroundWindow()
+    user32.SendMessageW(ventana, _WM_APPCOMMAND, 0, _APPCOMMAND_MEDIOS[accion])
+    return _confirmacion_medios(accion)
+
+
+def _medios_linux(accion: str) -> str:
+    if not shutil.which("playerctl"):
+        return "No encuentro `playerctl` para controlar la reproducción."
+
+    orden = {
+        "reproducir_pausar": "play-pause",
+        "siguiente": "next",
+        "anterior": "previous",
+    }[accion]
+    subprocess.run(  # noqa: S603 - argumentos fijos, sin entrada del usuario
+        ["playerctl", orden], check=False, timeout=5
+    )
+    return _confirmacion_medios(accion)
+
+
+def _confirmacion_medios(accion: str) -> str:
+    return {
+        "reproducir_pausar": "Reproducción alternada.",
+        "siguiente": "Siguiente pista.",
+        "anterior": "Pista anterior.",
+    }[accion]
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  Abrir programas y sitios
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -276,6 +334,23 @@ def herramientas_de_sistema() -> list[Any]:
         return {"content": [{"type": "text", "text": texto}]}
 
     @tool(
+        "control_medios",
+        "Reproduce o pausa la música/vídeo en primer plano, o cambia de "
+        "pista. Úsalo cuando el usuario pida pausar, reanudar, saltar a la "
+        "siguiente canción o volver a la anterior.",
+        {
+            "accion": {
+                "type": "string",
+                "enum": ["reproducir_pausar", "siguiente", "anterior"],
+                "description": "Qué hacer con la reproducción.",
+            },
+        },
+    )
+    async def control_medios(args: dict[str, Any]) -> dict[str, Any]:
+        texto = controlar_medios(str(args.get("accion", "")))
+        return {"content": [{"type": "text", "text": texto}]}
+
+    @tool(
         "abrir",
         "Abre un programa, un archivo o una página web. Acepta el nombre de una "
         "aplicación ('spotify', 'notepad'), una ruta o una URL. Pide "
@@ -314,5 +389,5 @@ def herramientas_de_sistema() -> list[Any]:
         del args
         return {"content": [{"type": "text", "text": estado_del_equipo()}]}
 
-    return [volumen, abrir_algo, bloquear, hora, estado]
+    return [volumen, control_medios, abrir_algo, bloquear, hora, estado]
 
