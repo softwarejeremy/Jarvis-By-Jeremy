@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import os
 import socket
 import sys
 import threading
@@ -415,6 +416,60 @@ class TestLecturaDeTextoNoCuelgaElCierre:
 
         assert resultado == "hola"
         assert creados == [True]
+
+
+class TestSalirDelProceso:
+    """Capturado con `faulthandler` en el Windows de Jeremy: tras Ctrl+C,
+    con todo lo nuestro ya cerrado y hasta con el mensaje de despedida
+    impreso, el hilo principal se quedaba para siempre en
+    `threading._shutdown()` esperando al «AnyIO worker thread» que el SDK de
+    Claude deja aparcado en `queue.get()`. Es un hilo no daemon de un
+    tercero: no podemos marcarlo ni despertarlo, sólo dejar de esperarlo."""
+
+    def test_termina_el_proceso_con_el_codigo_dado(self, monkeypatch):
+        codigos: list[int] = []
+        monkeypatch.setattr(os, "_exit", codigos.append)
+
+        main.salir_del_proceso(3)
+
+        assert codigos == [3]
+
+    def test_vacia_los_flujos_antes_de_salir(self, monkeypatch):
+        orden: list[str] = []
+        monkeypatch.setattr(os, "_exit", lambda _c: orden.append("salir"))
+        monkeypatch.setattr(
+            sys, "stdout", _FlujoEspia(lambda: orden.append("flush stdout"))
+        )
+        monkeypatch.setattr(
+            sys, "stderr", _FlujoEspia(lambda: orden.append("flush stderr"))
+        )
+
+        main.salir_del_proceso(0)
+
+        # El orden importa: `os._exit` no vacía nada por su cuenta, así que
+        # salir antes de tiempo se comería la última línea impresa.
+        assert orden == ["flush stdout", "flush stderr", "salir"]
+
+    def test_un_flujo_roto_no_impide_salir(self, monkeypatch):
+        codigos: list[int] = []
+        monkeypatch.setattr(os, "_exit", codigos.append)
+
+        def explota() -> None:
+            raise ValueError("consola cerrada")
+
+        monkeypatch.setattr(sys, "stdout", _FlujoEspia(explota))
+
+        main.salir_del_proceso(0)
+
+        assert codigos == [0]
+
+
+class _FlujoEspia:
+    def __init__(self, al_vaciar) -> None:  # noqa: ANN001
+        self._al_vaciar = al_vaciar
+
+    def flush(self) -> None:
+        self._al_vaciar()
 
 
 class TestElSegundoCtrlCTampocoEnsucia:

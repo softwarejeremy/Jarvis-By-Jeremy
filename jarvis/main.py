@@ -539,6 +539,29 @@ def run(argv: list[str] | None = None) -> int:
     return _correr_hasta_el_final(_main_async(args, argv_crudo))
 
 
+def salir_del_proceso(codigo: int) -> None:
+    """Termina el proceso ya, sin esperar a hilos que no son nuestros.
+
+    Esta es la tercera capa del cierre, y hace falta porque las otras dos no
+    alcanzan: cuando `run()` vuelve, todo lo nuestro está cerrado, pero el
+    intérprete todavía espera **sin ningún límite** a que mueran los hilos
+    no daemon que haya vivos — incluidos los que crean las bibliotecas de
+    terceros y que no podemos ni marcar como daemon ni despertar.
+
+    El caso real, capturado con `faulthandler` en el Windows de Jeremy: el
+    «AnyIO worker thread» que el SDK de Claude deja aparcado en `queue.get()`
+    sobrevive al cierre del loop, y el hilo principal se queda para siempre
+    en `threading._shutdown()` esperándolo. Con todo lo nuestro ya terminado
+    —y hasta con el mensaje de despedida impreso—, el Ctrl+C no devolvía la
+    terminal. `os._exit` se salta esa espera; por eso hay que vaciar los
+    flujos a mano antes, que es lo único que nos llevaríamos por delante.
+    """
+    for flujo in (sys.stdout, sys.stderr):
+        with contextlib.suppress(Exception):
+            flujo.flush()
+    os._exit(codigo)
+
+
 def _correr_hasta_el_final(corutina: Coroutine[Any, Any, int]) -> int:
     """Como `asyncio.run()`, pero con la limpieza final acotada.
 
