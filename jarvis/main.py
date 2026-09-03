@@ -53,6 +53,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="servir el HUD con TLS: hace falta para usar el micrófono desde el móvil",
     )
     p.add_argument(
+        "--lan",
+        action="store_true",
+        help=(
+            "exponer el HUD a toda la red local, no sólo este equipo "
+            "(por defecto sólo escucha en 127.0.0.1)"
+        ),
+    )
+    p.add_argument(
         "--sin-navegador",
         action="store_true",
         help="con --web, no abrir el navegador solo al arrancar",
@@ -305,23 +313,40 @@ async def _arrancar_todo(
     url_local: str | None = None
 
     if args.web:
+        import secrets
+
         from .server.app import ip_local, servir
+
+        # Uno nuevo por arranque: sin él, `/api/*` y el WebSocket no dan
+        # nada (ver el docstring de `crear_app`). Va en la URL que se
+        # imprime y en el QR, así que abrir el enlace de siempre sigue
+        # bastando — no hay nada que teclear a mano.
+        token = secrets.token_urlsafe(24)
+        host = "0.0.0.0" if args.lan else "127.0.0.1"
 
         tareas.append(
             asyncio.create_task(
-                servir(core, puerto=args.puerto, https=args.https), name="servidor"
+                servir(core, host=host, puerto=args.puerto, https=args.https, token=token),
+                name="servidor",
             )
         )
 
+        if args.lan:
+            hud.console.print(
+                "  [yellow]--lan: el HUD queda expuesto a toda la red local, no sólo "
+                "este equipo.[/yellow]"
+            )
+
         esquema = "https" if args.https else "http"
-        url_local = f"{esquema}://localhost:{args.puerto}"
+        url_local = f"{esquema}://localhost:{args.puerto}/?t={token}"
         hud.console.print(f"  [bold cyan]HUD aquí:[/bold cyan]      {url_local}")
 
         # La IP se calcula sola: pedirle al usuario que interprete `ipconfig`
-        # es trasladarle un trabajo que la máquina hace mejor.
-        ip = ip_local()
+        # es trasladarle un trabajo que la máquina hace mejor. Sin --lan el
+        # servidor no escucha en esa IP, así que no tiene sentido enseñarla.
+        ip = ip_local() if args.lan else None
         if ip:
-            url_movil = f"{esquema}://{ip}:{args.puerto}"
+            url_movil = f"{esquema}://{ip}:{args.puerto}/?t={token}"
             hud.console.print(
                 f"  [bold cyan]desde el móvil:[/bold cyan] {url_movil}"
                 "  [dim](misma red wifi)[/dim]"
@@ -339,6 +364,11 @@ async def _arrancar_todo(
             hud.console.print(
                 "  [yellow]Para hablarle desde el móvil hace falta --https:[/yellow]\n"
                 "  [dim]los navegadores sólo dan acceso al micrófono en contexto seguro.[/dim]"
+            )
+        elif not args.lan:
+            hud.console.print(
+                "  [dim]Sólo este equipo puede abrir el HUD. Añada --lan para usarlo\n"
+                "  desde el móvil (misma red wifi).[/dim]"
             )
         hud.console.print()
 

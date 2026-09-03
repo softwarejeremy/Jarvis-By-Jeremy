@@ -43,7 +43,7 @@ def _puerto_libre() -> int:
 def _args(**cambios) -> argparse.Namespace:
     base = dict(
         texto=False, demo=True, sim=None, muda=True, web=False, puerto=8765,
-        https=False, sin_navegador=False, sin_bandeja=True, diag=False,
+        https=False, lan=False, sin_navegador=False, sin_bandeja=True, diag=False,
         arrancar_con_windows=False, quitar_del_inicio=False, config=None, verbose=False,
     )
     base.update(cambios)

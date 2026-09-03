@@ -10,11 +10,13 @@ que costó encontrar: el WebSocket devolvía 403 porque, con
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from datetime import date
 
 import numpy as np
 import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from jarvis.audio.capture import FakeMicStream, MicStream
 from jarvis.audio.player import NullPlayer
@@ -24,7 +26,13 @@ from jarvis.core.core import JarvisCore
 from jarvis.core.historial import Historial
 from jarvis.core.memory import CATEGORIAS, Memory
 from jarvis.events import EventType
-from jarvis.server.app import HISTORIAL_MAXLEN, _atender, _atender_audio, crear_app
+from jarvis.server.app import (
+    HISTORIAL_MAXLEN,
+    MAX_TEXT_BYTES,
+    _atender,
+    _atender_audio,
+    crear_app,
+)
 
 from .conftest import FakeAgent, FakeTTS
 
@@ -43,6 +51,9 @@ def construir_core(settings, *, mic=None, agent=None):
     )
 
 
+TOKEN_PRUEBA = "token-de-prueba"
+
+
 @pytest.fixture
 def cliente(settings):
     core = construir_core(settings)
@@ -50,8 +61,13 @@ def cliente(settings):
     # vive en disco y sobrevive al reinicio). Aquí se conecta a mano, igual
     # que main.py, para poder probar el servidor sin arrancar todo el resto.
     Historial(settings.data_dir / "conversaciones").escuchar(core.bus)
-    with fastapi_testclient.TestClient(crear_app(core)) as c:
+    with fastapi_testclient.TestClient(crear_app(core, TOKEN_PRUEBA)) as c:
         c.core = core
+        c.token = TOKEN_PRUEBA
+        # El token va aquí una sola vez: así el resto de tests de este
+        # archivo no tiene que pensar en autorización salvo los que
+        # justamente la están probando.
+        c.headers.update({"Authorization": f"Bearer {TOKEN_PRUEBA}"})
         yield c
 
 
@@ -87,7 +103,8 @@ class TestApiEstado:
 
     def test_reconoce_un_microfono_real(self, settings):
         core = construir_core(settings, mic=MicStream())
-        with fastapi_testclient.TestClient(crear_app(core)) as c:
+        with fastapi_testclient.TestClient(crear_app(core, TOKEN_PRUEBA)) as c:
+            c.headers.update({"Authorization": f"Bearer {TOKEN_PRUEBA}"})
             assert c.get("/api/estado").json()["microfono"] is True
 
     def test_incluye_el_presupuesto_configurado(self, cliente, settings):
@@ -102,7 +119,8 @@ class TestApiEstado:
 
         settings.agent.model = "claude-opus-5"
         core = construir_core(settings, agent=DemoAgent())
-        with fastapi_testclient.TestClient(crear_app(core)) as c:
+        with fastapi_testclient.TestClient(crear_app(core, TOKEN_PRUEBA)) as c:
+            c.headers.update({"Authorization": f"Bearer {TOKEN_PRUEBA}"})
             assert c.get("/api/estado").json()["modelo"] == "modo demostración"
 
     def test_anuncia_el_modelo_real_del_agente(self, settings):
@@ -111,7 +129,8 @@ class TestApiEstado:
 
         settings.agent.model = "claude-opus-5"  # el agente manda, no la config
         core = construir_core(settings, agent=AgenteConModelo())
-        with fastapi_testclient.TestClient(crear_app(core)) as c:
+        with fastapi_testclient.TestClient(crear_app(core, TOKEN_PRUEBA)) as c:
+            c.headers.update({"Authorization": f"Bearer {TOKEN_PRUEBA}"})
             assert c.get("/api/estado").json()["modelo"] == "claude-sonnet-5"
 
 
@@ -137,16 +156,136 @@ class TestApiGasto:
         assert cliente.get("/api/gasto").json()["sesion_usd"] == pytest.approx(0.05)
 
 
+class TestAutorizacion:
+    """El HUD sin autenticar era ejecución de código arbitraria desde la
+    wifi: cualquiera podía leer la conversación entera y, peor, mandar
+    `{"type":"confirmar","allowed":true}` para aprobar un permiso —
+    ganándole la carrera al «sí» hablado (`core.confirmar_por_voz` deja
+    ganar a quien conteste primero). Sin el token de sesión, ninguna de las
+    dos cosas puede pasar."""
+
+    def test_sin_token_la_api_responde_401(self, settings):
+        core = construir_core(settings)
+        with fastapi_testclient.TestClient(crear_app(core, TOKEN_PRUEBA)) as c:
+            assert c.get("/api/estado").status_code == 401
+
+    def test_con_el_token_equivocado_tambien_es_401(self, settings):
+        core = construir_core(settings)
+        with fastapi_testclient.TestClient(crear_app(core, TOKEN_PRUEBA)) as c:
+            c.headers.update({"Authorization": "Bearer no-es-este"})
+            assert c.get("/api/estado").status_code == 401
+
+    def test_el_token_por_query_tambien_vale(self, settings):
+        # No sólo por cabecera: abrir /api/estado?t=... a mano tiene que
+        # funcionar igual, por si algún día hace falta probarlo así.
+        core = construir_core(settings)
+        with fastapi_testclient.TestClient(crear_app(core, TOKEN_PRUEBA)) as c:
+            assert c.get(f"/api/estado?t={TOKEN_PRUEBA}").status_code == 200
+
+    def test_la_pagina_y_los_estaticos_no_piden_token(self, settings):
+        # A propósito: es el mismo HTML/CSS/JS público de siempre, sin datos
+        # de nadie. Exigir el token aquí rompería abrir la PWA desde el
+        # icono del móvil, que no puede llevarlo en el `start_url`.
+        core = construir_core(settings)
+        with fastapi_testclient.TestClient(crear_app(core, TOKEN_PRUEBA)) as c:
+            assert c.get("/").status_code == 200
+            assert c.get("/estaticos/hud.js").status_code == 200
+
+    def test_ws_sin_token_se_rechaza_antes_de_aceptar(self, settings):
+        core = construir_core(settings)
+        with fastapi_testclient.TestClient(crear_app(core, TOKEN_PRUEBA)) as c:
+            with pytest.raises(WebSocketDisconnect) as exc:
+                with c.websocket_connect("/ws"):
+                    pass
+        assert exc.value.code == 4401
+
+    def test_ws_con_token_equivocado_se_rechaza(self, cliente):
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with cliente.websocket_connect("/ws?t=no-es-el-token"):
+                pass
+        assert exc.value.code == 4401
+
+    def test_origin_ajeno_se_rechaza(self, cliente):
+        # Los WebSocket no respetan CORS: sin esta comprobación, cualquier
+        # página que el usuario visite podría abrir este mismo socket desde
+        # su propio navegador ("cross-site WebSocket hijacking").
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with cliente.websocket_connect(
+                f"/ws?t={cliente.token}", headers={"origin": "https://ajeno.example"}
+            ):
+                pass
+        assert exc.value.code == 4403
+
+    async def test_sin_token_no_se_puede_aprobar_un_permiso_pendiente(self, settings):
+        core = construir_core(settings)
+        await core.start()
+        try:
+            tarea = asyncio.create_task(core.confirmar_por_voz("¿Lo hago?"))
+            await TestConfirmacionDesdeElHUD._esperar_pendiente(core)
+
+            with fastapi_testclient.TestClient(crear_app(core, TOKEN_PRUEBA)) as c:
+                with pytest.raises(WebSocketDisconnect):
+                    with c.websocket_connect("/ws?t=no-es-el-token"):
+                        pass
+
+            # El permiso sigue esperando: nadie sin el token pudo aprobarlo,
+            # que es justo lo que antes se podía hacer sin ninguna barrera.
+            assert core.confirmacion_pendiente
+            core.responder_confirmacion(False)
+            resultado = await asyncio.wait_for(tarea, timeout=3)
+        finally:
+            await core.stop()
+        assert resultado is False
+
+    def test_mensaje_demasiado_largo_se_ignora_sin_tumbar_la_conexion(self, cliente):
+        # JSON válido, pero enorme: si sólo se quitara el límite de tamaño
+        # (dejando el manejo de JSON mal formado intacto), esto se colaría y
+        # se ejecutaría como una orden "pausa" de verdad — de ahí que la
+        # comprobación no pueda ser "no revienta", tiene que ser "no pasa".
+        enorme = json.dumps({"type": "pausa", "relleno": "x" * MAX_TEXT_BYTES})
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
+            ws.receive_json()  # estado
+            ws.receive_json()  # historial
+            ws.send_text(enorme)
+            evento = ws.receive_json()
+        assert evento["type"] == "log"
+        assert "demasiado largo" in evento["data"]["message"].lower()
+
+    def test_json_mal_formado_no_tumba_la_conexion(self, cliente):
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
+            ws.receive_json()
+            ws.receive_json()
+            ws.send_text("esto no es json")
+            evento = ws.receive_json()
+        assert evento["type"] == "log"
+        assert "no he entendido" in evento["data"]["message"].lower()
+
+    async def test_una_rafaga_de_texto_no_lanza_turnos_concurrentes(self, settings):
+        # `_atender` usa `core._lanzar`, que sustituye el turno anterior en
+        # vez de acumularlo — igual que ya hace la voz.
+        core = construir_core(settings)
+        await core.start()
+        try:
+            await _atender(core, {"type": "texto", "text": "primero"})
+            await _atender(core, {"type": "texto", "text": "segundo"})
+            await asyncio.sleep(0.05)
+        finally:
+            await core.stop()
+        assert core.agent.preguntas == ["segundo"], (
+            "el primer turno debía cancelarse, no acumularse con el segundo"
+        )
+
+
 class TestWebSocket:
     def test_conecta_y_manda_el_estado_inicial(self, cliente):
         """El fallo del 403 vivía justo aquí."""
-        with cliente.websocket_connect("/ws") as ws:
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
             primero = ws.receive_json()
         assert primero["type"] == "state_changed"
         assert primero["data"]["state"] == "dormido"
 
     def test_reenvia_los_eventos_del_bus(self, cliente):
-        with cliente.websocket_connect("/ws") as ws:
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
             ws.receive_json()  # el estado inicial
             ws.receive_json()  # el historial (vacío)
             cliente.core.bus.emit(EventType.LOG, message="hola")
@@ -172,14 +311,14 @@ class TestHistorial:
         )
         cliente.core.bus.emit(EventType.FINAL_TRANSCRIPT, text="de hoy")
 
-        with cliente.websocket_connect("/ws") as ws:
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
             ws.receive_json()
             historial = ws.receive_json()
 
         assert [t["texto"] for t in historial["data"]["turnos"]] == ["de hoy"]
 
     def test_arranca_vacio(self, cliente):
-        with cliente.websocket_connect("/ws") as ws:
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
             ws.receive_json()  # el estado inicial
             historial = ws.receive_json()
         assert historial["type"] == "historial"
@@ -189,7 +328,7 @@ class TestHistorial:
         cliente.core.bus.emit(EventType.FINAL_TRANSCRIPT, text="hola")
         cliente.core.bus.emit(EventType.ASSISTANT_DONE, text="¿En qué le ayudo?")
 
-        with cliente.websocket_connect("/ws") as ws:
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
             ws.receive_json()  # el estado inicial
             historial = ws.receive_json()
 
@@ -207,7 +346,7 @@ class TestHistorial:
         # (_atender) que usa el HUD. Es donde vivía el hueco — core.responder()
         # no emite nada por sí solo, así que un turno tecleado se perdía al
         # reconectar aunque la respuesta de J.A.R.V.I.S. sí sobreviviera.
-        with cliente.websocket_connect("/ws") as ws:
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
             ws.receive_json()  # el estado inicial
             ws.receive_json()  # el historial (vacío)
             ws.send_json({"type": "texto", "text": "qué hora es"})
@@ -216,7 +355,7 @@ class TestHistorial:
         assert eco["type"] == "final_transcript"
         assert eco["data"]["text"] == "qué hora es"
 
-        with cliente.websocket_connect("/ws") as ws:
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
             ws.receive_json()
             historial = ws.receive_json()
 
@@ -228,7 +367,7 @@ class TestHistorial:
         # tiene su propio hueco en el panel de Actividad.
         cliente.core.bus.emit(EventType.FINAL_TRANSCRIPT, text="sí", kind="confirmacion")
 
-        with cliente.websocket_connect("/ws") as ws:
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
             ws.receive_json()
             historial = ws.receive_json()
         assert historial["data"]["turnos"] == []
@@ -236,7 +375,7 @@ class TestHistorial:
     def test_las_respuestas_vacias_no_entran(self, cliente):
         cliente.core.bus.emit(EventType.ASSISTANT_DONE, text="")
 
-        with cliente.websocket_connect("/ws") as ws:
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
             ws.receive_json()
             historial = ws.receive_json()
         assert historial["data"]["turnos"] == []
@@ -245,7 +384,7 @@ class TestHistorial:
         for i in range(HISTORIAL_MAXLEN + 10):
             cliente.core.bus.emit(EventType.FINAL_TRANSCRIPT, text=f"mensaje {i}")
 
-        with cliente.websocket_connect("/ws") as ws:
+        with cliente.websocket_connect(f"/ws?t={cliente.token}") as ws:
             ws.receive_json()
             historial = ws.receive_json()
 
@@ -378,7 +517,7 @@ class TestApiMovil:
 
         datos = cliente.get("/api/movil", headers=self.CABECERAS).json()
 
-        assert datos["url"] == "http://192.168.1.37:8765"
+        assert datos["url"] == f"http://192.168.1.37:8765/?t={TOKEN_PRUEBA}"
         assert datos["qr_svg"] and "<svg" in datos["qr_svg"]
 
     def test_sin_qrcode_instalado_sigue_dando_la_url(self, cliente, monkeypatch):
@@ -391,7 +530,7 @@ class TestApiMovil:
 
         datos = cliente.get("/api/movil", headers=self.CABECERAS).json()
 
-        assert datos["url"] == "http://192.168.1.37:8765"
+        assert datos["url"] == f"http://192.168.1.37:8765/?t={TOKEN_PRUEBA}"
         assert datos["qr_svg"] is None
 
 

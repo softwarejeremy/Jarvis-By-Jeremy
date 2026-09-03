@@ -15,9 +15,11 @@ import asyncio
 import contextlib
 import json
 import re
+import secrets
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 # FastAPI se importa aquí arriba, no dentro de las funciones. Con
 # `from __future__ import annotations` las anotaciones son cadenas, y FastAPI
@@ -25,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 # de una función es invisible para él, y el resultado es un 403 en el
 # handshake que no dice nada. Este módulo sólo se importa cuando se pide
 # `--web`, así que no encarece el arranque normal.
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -113,10 +115,31 @@ def _qr_svg(url: str) -> str | None:
         return None
 
 
-def crear_app(core: JarvisCore) -> FastAPI:
-    """Monta la aplicación web sobre un núcleo ya construido."""
+def crear_app(core: JarvisCore, token: str) -> FastAPI:
+    """Monta la aplicación web sobre un núcleo ya construido.
+
+    `token` es el secreto de esta sesión (uno nuevo por arranque, generado en
+    `main.py`): sin él, `/api/*` y `/ws` no dan nada. `/` y `/estaticos/*`
+    quedan fuera a propósito — son el mismo HTML/CSS/JS público para
+    cualquier instalación, sin datos de nadie; exigir el token ahí sólo
+    rompería abrir el HUD como PWA desde el icono del móvil (`start_url` no
+    puede llevar el token). Lo que de verdad hay que proteger —la
+    conversación, la memoria, y sobre todo poder aprobar un permiso— vive
+    detrás de `/api/*` y del WebSocket, y ahí sí se exige siempre.
+    """
     app = FastAPI(title="J.A.R.V.I.S.", docs_url=None, redoc_url=None)
     app.mount("/estaticos", StaticFiles(directory=ESTATICOS), name="estaticos")
+
+    def _requiere_token(request: Request) -> None:
+        cabecera = request.headers.get("authorization", "")
+        if cabecera.lower().startswith("bearer "):
+            recibido = cabecera[7:]
+        else:
+            recibido = request.query_params.get("t", "")
+        if not secrets.compare_digest(recibido, token):
+            raise HTTPException(status_code=401, detail="Falta o no coincide el token de sesión.")
+
+    autorizado = Depends(_requiere_token)
 
     # El registro en sí lo escucha `main.py` (para que quede constancia haya
     # o no HUD web mirando); aquí sólo se lee de vuelta.
@@ -137,7 +160,7 @@ def crear_app(core: JarvisCore) -> FastAPI:
     async def raiz():  # noqa: ANN202
         return FileResponse(ESTATICOS / "index.html")
 
-    @app.get("/api/estado")
+    @app.get("/api/estado", dependencies=[autorizado])
     async def estado():  # noqa: ANN202
         """Estado actual, para que la página no arranque en blanco."""
         return {
@@ -157,47 +180,49 @@ def crear_app(core: JarvisCore) -> FastAPI:
             "presupuesto_usd": core.s.agent.max_budget_usd,
         }
 
-    @app.get("/api/gasto")
+    @app.get("/api/gasto", dependencies=[autorizado])
     async def gasto():  # noqa: ANN202
         g = Gasto(core.s.data_dir / "gasto.json")
         return {"sesion_usd": core.coste_usd, "hoy_usd": g.hoy(), "mes_usd": g.mes_actual()}
 
-    @app.get("/api/memoria")
+    @app.get("/api/memoria", dependencies=[autorizado])
     async def memoria():  # noqa: ANN202
         return _memoria_actual()
 
-    @app.post("/api/memoria/olvidar")
+    @app.post("/api/memoria/olvidar", dependencies=[autorizado])
     async def memoria_olvidar(peticion: _PeticionOlvidar):  # noqa: ANN202
         mensaje = Memory(core.s.memory_dir).olvidar(peticion.texto)
         return {"mensaje": mensaje, "memoria": _memoria_actual()}
 
-    @app.get("/api/conversaciones")
+    @app.get("/api/conversaciones", dependencies=[autorizado])
     async def conversaciones_dias():  # noqa: ANN202
         """Qué días hay conversación registrada, más reciente primero."""
         return {"dias": historial.dias()}
 
-    @app.get("/api/conversaciones/{dia}")
+    @app.get("/api/conversaciones/{dia}", dependencies=[autorizado])
     async def conversaciones_del_dia(dia: str):  # noqa: ANN202
         """Los turnos de un día. Uno sin registro o mal formado da vacío."""
         if not _FORMATO_DIA_VALIDO.fullmatch(dia):
             return {"turnos": []}
         return {"turnos": historial.leer(dia)}
 
-    @app.get("/api/movil")
+    @app.get("/api/movil", dependencies=[autorizado])
     async def movil(request: Request):  # noqa: ANN202
         """La URL y el QR para abrir este mismo HUD desde el móvil.
 
         El esquema y el puerto se leen de la propia petición, no de un
         parámetro guardado al arrancar: es exactamente por dónde el
         navegador que pide esto está mirando la página ahora mismo, así que
-        no puede desincronizarse de `--https`/`--puerto`.
+        no puede desincronizarse de `--https`/`--puerto`. El token va en la
+        URL: es lo único que hace que abrirla desde el móvil no se quede en
+        una pantalla que nunca conecta.
         """
         ip = ip_local()
         puerto = request.url.port
         if not ip or not puerto:
             return {"url": None, "qr_svg": None}
 
-        url = f"{request.url.scheme}://{ip}:{puerto}"
+        url = f"{request.url.scheme}://{ip}:{puerto}/?t={token}"
         return {"url": url, "qr_svg": _qr_svg(url)}
 
     @app.get("/estaticos-generados/icono-180.png")
@@ -216,6 +241,23 @@ def crear_app(core: JarvisCore) -> FastAPI:
 
     @app.websocket("/ws")
     async def websocket(ws: WebSocket) -> None:
+        # Los WebSocket no respetan CORS: sin comprobar `Origin` a mano,
+        # cualquier página que el usuario visite podría abrir este socket
+        # desde su propio navegador y tener control total sobre J.A.R.V.I.S.
+        # ("cross-site WebSocket hijacking"). Los navegadores no dejan
+        # falsificar la cabecera `Origin`, así que comparar contra el `Host`
+        # de la propia petición es suficiente.
+        origen = ws.headers.get("origin")
+        if origen is not None and urlparse(origen).netloc != ws.headers.get("host", ""):
+            await ws.close(code=4403)
+            return
+
+        # El navegador no puede mandar cabeceras propias al abrir un
+        # WebSocket, así que aquí el token sólo puede viajar por la URL.
+        if not secrets.compare_digest(ws.query_params.get("t", ""), token):
+            await ws.close(code=4401)
+            return
+
         await ws.accept()
 
         # El estado actual primero: si te conectas a media conversación, la
@@ -263,8 +305,17 @@ def crear_app(core: JarvisCore) -> FastAPI:
                     continue
 
                 texto = paquete.get("text")
-                if texto:
-                    await _atender(core, json.loads(texto))
+                if not texto:
+                    continue
+                if len(texto) > MAX_TEXT_BYTES:
+                    core.bus.emit(EventType.LOG, message="Mensaje demasiado largo; lo ignoro.")
+                    continue
+                try:
+                    orden = json.loads(texto)
+                except ValueError:
+                    core.bus.emit(EventType.LOG, message="No he entendido ese mensaje.")
+                    continue
+                await _atender(core, orden)
 
         salida = asyncio.create_task(hacia_el_navegador())
         entrada = asyncio.create_task(desde_el_navegador())
@@ -292,6 +343,10 @@ MAX_AUDIO_BYTES = 2_000_000
 # Menos de esto no da ni para una palabra; casi siempre es un botón pulsado
 # sin querer. Transcribirlo sólo gastaría tiempo para devolver vacío.
 MIN_AUDIO_BYTES = 4_000  # ~0,12 s
+
+# Una orden de verdad ("texto", "confirmar"...) cabe de sobra en unos pocos
+# cientos de bytes; el mensaje tecleado más largo razonable no llega a esto.
+MAX_TEXT_BYTES = 20_000
 
 
 async def _atender_audio(core: JarvisCore, crudo: bytes) -> None:
@@ -344,9 +399,11 @@ async def _atender(core: JarvisCore, mensaje: dict[str, Any]) -> None:
         # aunque la respuesta de J.A.R.V.I.S. sí sobreviviera.
         core.bus.emit(EventType.FINAL_TRANSCRIPT, text=texto)
 
-        # En su propia tarea: el WebSocket tiene que seguir leyendo para
-        # que el botón de interrumpir funcione mientras responde.
-        asyncio.create_task(core.responder(texto))
+        # Por `core._lanzar`, no `asyncio.create_task` a secas: si no, una
+        # ráfaga de mensajes "texto" lanzaría turnos concurrentes sin límite
+        # en vez de que cada uno sustituya al anterior, que es como se
+        # comporta esto mismo desde la voz.
+        core._lanzar(core.responder(texto))
 
     elif tipo == "escuchar":
         asyncio.create_task(core.escuchar_ahora())
@@ -367,12 +424,18 @@ async def _atender(core: JarvisCore, mensaje: dict[str, Any]) -> None:
 
 async def servir(
     core: JarvisCore,
-    host: str = "0.0.0.0",
+    host: str = "127.0.0.1",
     puerto: int = 8765,
     *,
     https: bool = False,
+    token: str,
 ) -> None:
     """Arranca el servidor dentro del loop que ya está corriendo.
+
+    `host="127.0.0.1"` por defecto: sólo este equipo. Exponerlo a la red
+    local es una decisión aparte (`--lan` en `main.py`), no algo que `--web`
+    haga solo. `token` no lleva valor por defecto a propósito — no hay forma
+    de arrancar este servidor sin uno.
 
     Con ``https=True`` se sirve con un certificado autofirmado. Es feo —el
     navegador avisa la primera vez— pero es la única forma de que el móvil
@@ -390,7 +453,7 @@ async def servir(
         extra = {"ssl_certfile": str(cert), "ssl_keyfile": str(clave)}
 
     configuracion = uvicorn.Config(
-        crear_app(core),
+        crear_app(core, token),
         host=host,
         port=puerto,
         log_level="warning",   # el HUD ya cuenta lo que pasa; el log sólo estorba

@@ -128,7 +128,8 @@ python -m jarvis --demo           # sin clave ni gasto: respuestas simuladas
 python -m jarvis --muda           # sin audio de salida, sólo texto
 python -m jarvis --sim audio.wav  # inyecta un WAV en vez del micrófono
 python -m jarvis --web            # además, el HUD en el navegador (se abre solo)
-python -m jarvis --web --https    # y poder hablarle desde el móvil
+python -m jarvis --web --lan      # y también desde el móvil, en la misma wifi
+python -m jarvis --web --lan --https  # y poder hablarle por voz desde el móvil
 python -m jarvis --diag           # diagnóstico
 ```
 
@@ -151,6 +152,13 @@ que no, añade `--sin-navegador`). Verás el reactor cambiando de color según l
 haciendo, la conversación apareciendo palabra a palabra, las herramientas que usa y el
 gasto acumulado.
 
+Sin `--lan`, el HUD **sólo escucha en este equipo**: nadie más en la wifi puede
+abrirlo, ni por accidente. Cada arranque genera además un token nuevo (lo verás
+como `?t=...` al final de la URL que se imprime): sin él, ni la página ni el
+móvil pueden hablar con el núcleo — es lo único que hace falta para que abrir
+el enlace de siempre siga bastando, pero que nadie más pueda leer la
+conversación ni, sobre todo, aprobar en tu lugar un permiso que Claude pida.
+
 Por defecto intenta abrirlo en **Chrome** aunque no sea tu navegador por defecto de
 Windows; si no lo encuentra, cae al de siempre (normalmente Edge). Para ir siempre al
 navegador por defecto, pon en `config.toml`:
@@ -168,16 +176,21 @@ te deja con el HUD en blanco: repone los turnos de hoy en cuanto conecta. La
 conversación queda registrada en disco día a día, y el desplegable sobre el
 panel de conversación deja repasar cualquier día anterior.
 
-**Desde el móvil**: al arrancar con `--web`, J.A.R.V.I.S. te imprime las dos
-direcciones, ya calculadas:
+**Desde el móvil**: hace falta `--lan` — sin ella el HUD no escucha en la red y
+la segunda dirección ni se calcula:
+
+```powershell
+python -m jarvis --web --lan
+```
 
 ```
-HUD aquí:       http://localhost:8765
-desde el móvil: http://192.168.1.37:8765  (misma red wifi)
+HUD aquí:       http://localhost:8765/?t=Xy...
+desde el móvil: http://192.168.1.37:8765/?t=Xy...  (misma red wifi)
 ```
 
 Escribe esa segunda en el navegador del móvil, con el PC encendido y ambos en la
-misma wifi. La primera vez Windows preguntará si permites la conexión: hay que
+misma wifi — el token va incluido, así que no hay nada que teclear aparte de la
+URL. La primera vez Windows preguntará si permites la conexión: hay que
 decir que sí **para la red privada**. Si no aparece la segunda línea, es que el
 equipo no está en ninguna red local.
 
@@ -195,7 +208,7 @@ de un toque da exactamente igual.
 ### Hablarle desde el móvil
 
 ```powershell
-python -m jarvis --web --https
+python -m jarvis --web --lan --https
 ```
 
 Con `--https`, el botón se convierte en **mantén pulsado para hablar**: grabas con
@@ -415,14 +428,14 @@ Se puede desactivar a propósito con `--sin-bandeja`.
 ## Arrancar solo con Windows
 
 ```powershell
-python -m jarvis --arrancar-con-windows --web --https
+python -m jarvis --arrancar-con-windows --web --lan --https
 ```
 
 Deja un pequeño script en tu carpeta de Inicio (`shell:startup`) que lanza
 J.A.R.V.I.S. al iniciar sesión, **sin ventana de consola** — usa `pythonw.exe`,
 que no la abre, y lo lanza en modo oculto. Las banderas que pongas después de
 `--arrancar-con-windows` son las que arrancarán cada mañana: si aquí pones
-`--web --https`, eso es lo que se inicia solo. El icono de la bandeja se
+`--web --lan --https`, eso es lo que se inicia solo. El icono de la bandeja se
 encarga de avisar de que está vivo; por eso, al guardar la orden para cada
 mañana se añade `--sin-navegador` en automático — abrir una pestaña sola cada
 inicio de sesión sería intrusivo.

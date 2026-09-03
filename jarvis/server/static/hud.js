@@ -54,6 +54,49 @@ const PISTAS = {
   error: "Algo ha fallado. Revise la actividad.",
 };
 
+// El token llega en la URL (el enlace o el QR que imprime la terminal, uno
+// nuevo cada arranque) y se guarda para que abrir el HUD como PWA desde el
+// icono del móvil —sin query string, `start_url` no puede llevarlo— siga
+// funcionando mientras J.A.R.V.I.S. no se haya reiniciado. Se limpia de la
+// barra de direcciones enseguida: un token en el historial del navegador o
+// en una captura de pantalla es un token filtrado.
+function token() {
+  const enUrl = new URLSearchParams(location.search).get("t");
+  if (enUrl) {
+    try {
+      localStorage.setItem("jarvis_token", enUrl);
+    } catch (e) {
+      // Navegación privada o almacenamiento bloqueado: seguimos con el de
+      // la URL para esta misma sesión, aunque no sobreviva a un reinicio.
+    }
+    history.replaceState(null, "", location.pathname);
+    return enUrl;
+  }
+  try {
+    return localStorage.getItem("jarvis_token") || "";
+  } catch (e) {
+    return "";
+  }
+}
+
+const TOKEN = token();
+
+function fetchConToken(ruta, opciones) {
+  const cabeceras = Object.assign({}, (opciones && opciones.headers) || {}, {
+    Authorization: `Bearer ${TOKEN}`,
+  });
+  return fetch(ruta, Object.assign({}, opciones, { headers: cabeceras })).then((r) => {
+    // `fetch` sólo rechaza por fallo de red: un 401 (sin token, o uno
+    // caducado de un arranque anterior) llega aquí como respuesta "normal",
+    // con un cuerpo `{"detail": "..."}` que no tiene ninguna pinta de lo
+    // que cada `cargarX` espera. Sin este chequeo, ese texto de error se
+    // pintaba como si fuera memoria/gasto/historial de verdad. Al
+    // rechazar aquí, el `catch` que cada llamador ya tiene se encarga.
+    if (!r.ok) throw new Error(`${ruta}: ${r.status}`);
+    return r;
+  });
+}
+
 let socket = null;
 let reintento = 1000;
 let turnoJarvis = null;   // burbuja en curso, para ir añadiendo el streaming
@@ -66,7 +109,11 @@ let presupuestoUsd = null; // agent.max_budget_usd; null si no hay tope
 /* ── Conexión ──────────────────────────────────────────────── */
 function conectar() {
   const protocolo = location.protocol === "https:" ? "wss:" : "ws:";
-  socket = new WebSocket(`${protocolo}//${location.host}/ws`);
+  // El navegador no deja mandar cabeceras propias al abrir un WebSocket:
+  // el token sólo puede viajar aquí, en la propia URL.
+  socket = new WebSocket(
+    `${protocolo}//${location.host}/ws?t=${encodeURIComponent(TOKEN)}`
+  );
 
   socket.onopen = () => {
     reintento = 1000;
@@ -277,7 +324,7 @@ function cerrarTurno() {
 /* ── Días anteriores ───────────────────────────────────────── */
 async function cargarDiasHistorial() {
   try {
-    const r = await fetch("/api/conversaciones");
+    const r = await fetchConToken("/api/conversaciones");
     const datos = await r.json();
     pintarSelectorDias(datos.dias || []);
   } catch (e) {
@@ -312,7 +359,7 @@ el.selectorDias.addEventListener("change", async () => {
   diaViendo = dia;
   el.campo.disabled = true;
   try {
-    const r = await fetch(`/api/conversaciones/${dia}`);
+    const r = await fetchConToken(`/api/conversaciones/${dia}`);
     const datos = await r.json();
     renderTurnos(datos.turnos || []);
   } catch (e) {
@@ -348,7 +395,7 @@ function registrar(mensaje, clase) {
 /* ── Gasto ─────────────────────────────────────────────────── */
 async function cargarGasto() {
   try {
-    const r = await fetch("/api/gasto");
+    const r = await fetchConToken("/api/gasto");
     pintarGasto(await r.json());
   } catch (e) {
     // Sin el dato de hoy, el indicador se queda en $0.0000: no es mentira,
@@ -374,7 +421,7 @@ function pintarGasto({ hoy_usd = 0 } = {}) {
 /* ── Memoria ───────────────────────────────────────────────── */
 async function cargarMemoria() {
   try {
-    const r = await fetch("/api/memoria");
+    const r = await fetchConToken("/api/memoria");
     pintarMemoria(await r.json());
   } catch (e) {
     // Sin memoria que mostrar no hay mucho más que hacer aquí: el panel
@@ -423,7 +470,7 @@ async function olvidarEntrada(texto) {
   if (!confirm(`¿Olvidar «${texto}»?`)) return;
 
   try {
-    const r = await fetch("/api/memoria/olvidar", {
+    const r = await fetchConToken("/api/memoria/olvidar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texto }),
@@ -442,7 +489,7 @@ async function olvidarEntrada(texto) {
 // no encuentra una IP de red local que ofrecer.
 async function cargarAccesoMovil() {
   try {
-    const r = await fetch("/api/movil");
+    const r = await fetchConToken("/api/movil");
     const datos = await r.json();
     if (!datos.url) return;
 
@@ -706,7 +753,7 @@ document.addEventListener("keydown", (ev) => {
 });
 
 /* ── Arranque ──────────────────────────────────────────────── */
-fetch("/api/estado")
+fetchConToken("/api/estado")
   .then((r) => r.json())
   .then((s) => {
     el.modelo.textContent = s.modelo || "—";
