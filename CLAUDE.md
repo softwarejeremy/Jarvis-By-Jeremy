@@ -88,9 +88,22 @@ Piezas que sólo se entienden leyendo más de un archivo a la vez:
 - Asistente de voz personal para Jeremy (softwarejeremy), estilo J.A.R.V.I.S.,
   construido como extensión de Claude sobre el Claude Agent SDK — no un chatbot
   con micrófono, sino Claude con oídos, voz y permisos sobre el equipo.
-- Rama de desarrollo: `claude/jarvis-voice-assistant-qclzfi`. El PR #1 en
-  `softwarejeremy/Cositas-Skypie` ya existe desde el principio del proyecto y
-  se actualiza solo con cada push a esa rama — **nunca crear un PR nuevo**.
+- Rama de desarrollo: `claude/jarvis-voice-assistant-qclzfi`. El PR **#2** en
+  `softwarejeremy/Cositas-Skypie` se actualiza solo con cada push a esa rama
+  — **nunca crear un PR nuevo** (salvo que, como ya pasó una vez, el propio
+  GitHub cierre el PR vigente sin remedio: ver el aviso siguiente antes de
+  asumir que "nunca" es literal).
+- **El PR #1 original está cerrado y no se puede reabrir.** Al reescribir el
+  commit raíz de `main` durante la limpieza de datos personales del
+  historial (correo real como autor), el SHA de `main` cambió y GitHub
+  cerró el PR #1 solo, sin que nadie lo pidiera, porque ya no podía
+  relacionar su base original con el historial reescrito ("no history in
+  common"). Intentar reabrirlo lo confirma con ese mismo error. Se abrió el
+  PR #2 con el mismo contenido, y es el que sigue la convención de "nunca
+  un PR nuevo" de aquí en adelante. Moraleja para el futuro: si alguna vez
+  hace falta reescribir el historial de `main` (no sólo el de una rama de
+  trabajo), hay que asumir que cualquier PR abierto contra esa base se
+  romperá.
 - Jeremy prueba en su Windows real; esta sesión no tiene acceso a Windows,
   audio real, ni pantalla. Todo lo que reporta lo hace pegando literalmente
   la salida de PowerShell o adjuntando una captura de pantalla.
@@ -123,7 +136,7 @@ Piezas que sólo se entienden leyendo más de un archivo a la vez:
   única) está implementada y probada con dobles, pero **nunca verificada
   visualmente en un Windows real** — depende de que Jeremy la pruebe y lo
   reporte.
-- Puede haber una revisión periódica del PR #1 corriendo en segundo plano
+- Puede haber una revisión periódica del PR #2 corriendo en segundo plano
   (rutina programada de esta sesión) que comprueba CI y comentarios cada
   hora aproximadamente y se reprograma sola y en silencio si no hay cambios.
   Es normal ver notificaciones de ese tipo sin que el usuario haya escrito nada.
@@ -144,7 +157,8 @@ Piezas que sólo se entienden leyendo más de un archivo a la vez:
 
 ## Reglas globales
 
-- **Nunca crear un PR nuevo** para este proyecto: ya existe el PR #1.
+- **Nunca crear un PR nuevo** para este proyecto: ya existe el PR #2 (el #1
+  quedó cerrado sin remedio por GitHub, ver "Contexto del proyecto").
 - **Idioma**: todo en español — código, docstrings, comentarios, tests,
   mensajes de commit, y las respuestas al usuario.
 - **Comentarios**: sólo explican el *porqué* (una decisión no obvia, una
