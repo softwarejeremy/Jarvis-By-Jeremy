@@ -62,6 +62,47 @@ class TestBanderasNuevas:
         assert args.sin_bandeja is True
 
 
+class TestGuardarClave:
+    def test_lo_acepta_como_bandera(self):
+        args = main._parse_args(["--guardar-clave", "anthropic"])
+        assert args.guardar_clave == "anthropic"
+
+    def test_rechaza_un_valor_desconocido(self):
+        with pytest.raises(SystemExit):
+            main._parse_args(["--guardar-clave", "openai"])
+
+    def test_run_guarda_la_clave_leida_por_getpass(self, monkeypatch, capsys):
+        import getpass
+
+        from jarvis import claves
+
+        monkeypatch.setattr(getpass, "getpass", lambda _prompt: "sk-de-prueba")
+        llamadas = []
+        monkeypatch.setattr(
+            claves, "guardar", lambda nombre, valor: llamadas.append((nombre, valor)) or "ok"
+        )
+
+        codigo = main.run(["--guardar-clave", "anthropic"])
+
+        assert codigo == 0
+        assert llamadas == [("anthropic", "sk-de-prueba")]
+        assert "ok" in capsys.readouterr().out
+
+    def test_sin_escribir_nada_no_guarda(self, monkeypatch):
+        import getpass
+
+        from jarvis import claves
+
+        monkeypatch.setattr(getpass, "getpass", lambda _prompt: "   ")
+        llamado = []
+        monkeypatch.setattr(claves, "guardar", lambda *a: llamado.append(a))
+
+        codigo = main.run(["--guardar-clave", "anthropic"])
+
+        assert codigo == 1
+        assert llamado == []
+
+
 class TestInstanciaUnica:
     """Con el arranque automático, tener dos J.A.R.V.I.S. deja de ser
     hipotético. El chequeo va antes de tocar audio ni cargar modelos."""

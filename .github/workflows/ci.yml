@@ -26,6 +26,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  gitleaks:
+    name: Buscar secretos en el historial (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # gitleaks recorre el historial completo, no sólo el último commit
+
+      - name: Instalar gitleaks
+        run: go install github.com/zricethezav/gitleaks/v8@latest
+
+      - name: Escanear
+        run: |
+          GITLEAKS="$(go env GOPATH)/bin/gitleaks"
+          "$GITLEAKS" git . --config .gitleaks.toml --no-banner --redact
+
   comprobar:
     name: Python ${{ matrix.python }}
     runs-on: ubuntu-latest

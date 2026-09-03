@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from jarvis.config import load_settings
+from jarvis.config import Settings, load_settings
 
 
 def _escribir_toml(tmp_path, contenido: str):
@@ -39,6 +39,39 @@ class TestPrioridadDeFuentes:
         ruta = _escribir_toml(tmp_path, "")
 
         assert load_settings(ruta).agent.model == "claude-opus-5"
+
+
+class TestClaveDesdeKeyring:
+    """El almacén de credenciales del sistema va entre el entorno y `.env`:
+    ver `_FuenteKeyring` en `jarvis/config.py`."""
+
+    def test_se_usa_si_no_hay_entorno(self, monkeypatch):
+        import jarvis.claves
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        def leer_falso(nombre):
+            return "sk-del-almacen" if nombre == "anthropic" else None
+
+        monkeypatch.setattr(jarvis.claves, "leer", leer_falso)
+
+        assert Settings().anthropic_api_key == "sk-del-almacen"
+
+    def test_el_entorno_le_gana(self, monkeypatch):
+        import jarvis.claves
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-del-entorno")
+        monkeypatch.setattr(jarvis.claves, "leer", lambda _nombre: "sk-del-almacen")
+
+        assert Settings().anthropic_api_key == "sk-del-entorno"
+
+    def test_sin_nada_en_el_almacen_no_rompe_nada(self, monkeypatch):
+        import jarvis.claves
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setattr(jarvis.claves, "leer", lambda _nombre: None)
+
+        assert Settings().anthropic_api_key == ""
 
 
 class TestEnvNoDependeDelDirectorio:

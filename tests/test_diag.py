@@ -106,8 +106,8 @@ class TestShimDeLotesDeWindows:
     def test_reconoce_el_cmd_de_npm_en_windows(self, monkeypatch):
         monkeypatch.setattr(diag.platform, "system", lambda: "Windows")
 
-        assert diag._es_shim_de_lotes(r"C:\Users\x\AppData\Roaming\npm\claude.CMD")
-        assert diag._es_shim_de_lotes(r"C:\Users\x\claude.bat")
+        assert diag._es_shim_de_lotes(r"C:\Users\TU-USUARIO\AppData\Roaming\npm\claude.CMD")
+        assert diag._es_shim_de_lotes(r"C:\Users\TU-USUARIO\claude.bat")
 
     def test_el_exe_nativo_es_valido(self, monkeypatch):
         monkeypatch.setattr(diag.platform, "system", lambda: "Windows")
@@ -130,6 +130,32 @@ class TestShimDeLotesDeWindows:
         salida = capsys.readouterr().out
         assert "install.ps1" in salida, "hay que decir cómo arreglarlo"
         assert "claude.CMD" in salida
+
+
+class TestComprobarCredenciales:
+    """`--diag` es justo lo que se pega en un issue: ni un fragmento de la
+    clave real debería salir de la máquina, ni siquiera el prefijo."""
+
+    def test_no_muestra_ningun_trozo_de_la_clave(self, monkeypatch, capsys):
+        s = diag.load_settings()
+        s.anthropic_api_key = "sk-ant-secreta-de-verdad"
+        monkeypatch.setattr(diag, "load_settings", lambda *_a, **_k: s)
+
+        diag._comprobar_credenciales()
+
+        salida = capsys.readouterr().out
+        assert "sk-ant-secreta-de-verdad" not in salida
+        assert "sk-ant" not in salida
+        assert "erdad" not in salida
+
+    def test_muestra_la_longitud(self, monkeypatch, capsys):
+        s = diag.load_settings()
+        s.anthropic_api_key = "sk-ant-de-prueba"
+        monkeypatch.setattr(diag, "load_settings", lambda *_a, **_k: s)
+
+        diag._comprobar_credenciales()
+
+        assert f"{len('sk-ant-de-prueba')} caracteres" in capsys.readouterr().out
 
 
 class TestPruebaDelCerebro:

@@ -1,0 +1,10 @@
+# Falsos positivos ya corregidos hacia delante (ver commit siguiente), no
+# datos personales reales: la regla `windows-local-user-path` es
+# deliberadamente amplia y estos dos commits usaban placeholders genéricos
+# ("ana", "x") en vez del marcador TU-USUARIO ya establecido en el resto del
+# proyecto. No merece otra reescritura de historial por esto: no es un dato
+# de nadie, sólo un ejemplo inconsistente.
+aba42f8a479d142dff00fdbdc50765cbb6d187f5:tests/test_inicio.py:windows-local-user-path:44
+aba42f8a479d142dff00fdbdc50765cbb6d187f5:tests/test_inicio.py:windows-local-user-path:45
+5202a425f52a004d51802a70696f4dd74df8a55a:tests/test_diag.py:windows-local-user-path:109
+5202a425f52a004d51802a70696f4dd74df8a55a:tests/test_diag.py:windows-local-user-path:110

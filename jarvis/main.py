@@ -72,6 +72,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument("--diag", action="store_true", help="diagnosticar el equipo y salir")
     p.add_argument(
+        "--guardar-clave",
+        metavar="{anthropic,elevenlabs}",
+        choices=["anthropic", "elevenlabs"],
+        help=(
+            "guardar una API key en el almacén de credenciales del sistema "
+            "(Credential Manager en Windows), en vez de en .env"
+        ),
+    )
+    p.add_argument(
         "--arrancar-con-windows",
         action="store_true",
         help="que J.A.R.V.I.S. se inicie solo al encender el equipo",
@@ -548,6 +557,18 @@ def run(argv: list[str] | None = None) -> int:
         from .diag import ejecutar_diagnostico
 
         return ejecutar_diagnostico()
+
+    if args.guardar_clave:
+        import getpass
+
+        from . import claves
+
+        valor = getpass.getpass(f"Clave de {args.guardar_clave}: ").strip()
+        if not valor:
+            print("No se ha introducido ninguna clave.")
+            return 1
+        print(claves.guardar(args.guardar_clave, valor))
+        return 0
 
     if args.arrancar_con_windows or args.quitar_del_inicio:
         from rich.console import Console

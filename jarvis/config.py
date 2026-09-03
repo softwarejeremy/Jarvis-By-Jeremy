@@ -1,12 +1,15 @@
 """Configuración de J.A.R.V.I.S.
 
-Dos fuentes, por orden de prioridad (gana la primera):
+Por orden de prioridad (gana la primera):
 
-1. Variables de entorno / `.env`  — para secretos y overrides puntuales.
-   Se anidan con doble guion bajo:  ``JARVIS_TTS__ENGINE=sapi``
-2. ``config.toml`` en la raíz del proyecto — para el resto de ajustes.
+1. Variables de entorno — para overrides puntuales o CI. Se anidan con doble
+   guion bajo:  ``JARVIS_TTS__ENGINE=sapi``
+2. El almacén de credenciales del sistema (``python -m jarvis
+   --guardar-clave``) — sólo para las API keys, ver ``jarvis/claves.py``.
+3. ``.env`` — respaldo en texto plano para quien no quiera usar el almacén.
+4. ``config.toml`` en la raíz del proyecto — para el resto de ajustes.
 
-Los secretos (API keys) viven **sólo** en `.env`, que está en `.gitignore`.
+Los secretos (API keys) nunca van en `config.toml`, que ni siquiera sabe leerlos.
 """
 
 from __future__ import annotations
@@ -187,6 +190,29 @@ class PermissionSettings(BaseModel):
     confirm_timeout_s: float = 12.0
 
 
+class _FuenteKeyring(PydanticBaseSettingsSource):
+    """Las API keys guardadas con `python -m jarvis --guardar-clave`, en el
+    almacén de credenciales del sistema en vez de en texto plano.
+
+    Entre el entorno y `.env`: una variable de entorno puesta a mano (útil
+    para overrides puntuales o en CI) le sigue ganando, pero si no hay
+    ninguna, se prefiere el almacén del sistema al archivo en claro.
+    """
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:  # noqa: ARG002
+        return None, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        from .claves import CLAVES, leer
+
+        valores: dict[str, Any] = {}
+        for nombre_clave, alias_env in CLAVES.items():
+            valor = leer(nombre_clave)
+            if valor:
+                valores[alias_env] = valor
+        return valores
+
+
 class _FuenteToml(PydanticBaseSettingsSource):
     """El contenido de `config.toml`, con menos prioridad que el entorno."""
 
@@ -223,10 +249,13 @@ class Settings(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         # Orden de mayor a menor prioridad: los kwargs explícitos del
         # constructor (los que usan los tests) siguen mandando; luego el
-        # entorno y `.env`; `config.toml` va DESPUÉS para que nunca les gane.
+        # entorno, el almacén de credenciales del sistema y `.env` — en ese
+        # orden, para las API keys (ver `_FuenteKeyring`); `config.toml` va
+        # DESPUÉS para que nunca le gane a ninguno de los anteriores.
         return (
             init_settings,
             env_settings,
+            _FuenteKeyring(settings_cls),
             dotenv_settings,
             _FuenteToml(settings_cls),
             file_secret_settings,

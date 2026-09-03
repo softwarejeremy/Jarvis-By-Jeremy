@@ -117,8 +117,9 @@ def _comprobar_credenciales() -> None:
     _seccion("Credenciales")
     s = load_settings()
     if s.has_api_key:
-        clave = s.anthropic_api_key
-        console.print(f"  {OK} ANTHROPIC_API_KEY presente ({clave[:7]}…{clave[-4:]})")
+        # Ni prefijo ni sufijo: --diag es justo lo que se pega en un issue, y
+        # ninguna porción de la clave real debería salir de la máquina.
+        console.print(f"  {OK} ANTHROPIC_API_KEY presente ({len(s.anthropic_api_key)} caracteres)")
     else:
         console.print(
             f"  {AVISO} Sin ANTHROPIC_API_KEY: sólo funcionará el modo demostración.\n"

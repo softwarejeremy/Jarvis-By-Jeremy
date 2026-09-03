@@ -69,6 +69,12 @@ bandeja = [
     "pystray>=0.19.5",
     "pillow>=10.0",  # pystray exige un PIL.Image; no es una dependencia extra
 ]
+keyring = [
+    # Almacén de credenciales del sistema (Credential Manager en Windows,
+    # Keychain en macOS, Secret Service en Linux) para no dejar las API keys
+    # en texto plano en `.env`.
+    "keyring>=25.0",
+]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.5"]
 
 [project.scripts]

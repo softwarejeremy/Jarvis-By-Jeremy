@@ -1,0 +1,18 @@
+title = "gitleaks: reglas de J.A.R.V.I.S."
+
+# El juego de reglas por defecto de gitleaks (claves de Anthropic, OpenAI,
+# tokens de Google, credenciales genéricas de alta entropía, etc.) más una
+# regla propia: la Fase 3a de seguridad limpió el historial de rutas locales
+# de Windows con el usuario real (`C:/Users/TU-USUARIO/...`); esta regla evita
+# que vuelva a colarse una, aquí o en cualquier fork.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "windows-local-user-path"
+description = "Ruta local de Windows con un usuario real, en vez del marcador TU-USUARIO de los ejemplos"
+regex = '''[Cc]:[\\/][Uu]sers[\\/][A-Za-z][A-Za-z0-9_.-]*'''
+tags = ["windows-path", "datos-personales"]
+
+  [rules.allowlist]
+  regexes = ['''(?i)c:[\\/]users[\\/]tu-usuario''']

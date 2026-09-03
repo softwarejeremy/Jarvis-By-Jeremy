@@ -41,8 +41,9 @@ class TestGuionVbs:
         assert "CreateObject" in guion
 
     def test_fija_la_carpeta_del_proyecto(self):
-        guion = inicio.guion_vbs(Path("py.exe"), Path("C:/Users/ana/Jarvis"), ["-m", "jarvis"])
-        assert "C:/Users/ana/Jarvis" in guion
+        carpeta = "C:/Users/TU-USUARIO/Jarvis"
+        guion = inicio.guion_vbs(Path("py.exe"), Path(carpeta), ["-m", "jarvis"])
+        assert carpeta in guion
 
     def test_cita_argumentos_con_espacios(self):
         # Sin comillas, "mi carpeta" se leería como dos argumentos distintos.

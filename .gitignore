@@ -1,6 +1,13 @@
 # Secretos — NUNCA subir
 .env
+.env.*
+!.env.example
 config.toml
+*.pem
+*.key
+*.crt
+client_secret*.json
+*token*.json
 
 # Python
 __pycache__/
