@@ -1,6 +1,6 @@
 # J.A.R.V.I.S.
 
-[![CI](https://github.com/softwarejeremy/Cositas-Skypie/actions/workflows/ci.yml/badge.svg)](https://github.com/softwarejeremy/Cositas-Skypie/actions/workflows/ci.yml)
+[![CI](https://github.com/softwarejeremy/Jarvis-by-Jeremy/actions/workflows/ci.yml/badge.svg)](https://github.com/softwarejeremy/Jarvis-by-Jeremy/actions/workflows/ci.yml)
 
 Un asistente personal por voz construido sobre el **Claude Agent SDK**. No es un
 chatbot con micrófono: es el mismo motor agéntico que usa Claude Code —con acceso a
@@ -74,8 +74,8 @@ pierde y acabarías instalando en el Python global sin darte cuenta.
 ### 3. El proyecto
 
 ```powershell
-git clone https://github.com/softwarejeremy/Cositas-Skypie.git
-cd Cositas-Skypie
+git clone https://github.com/softwarejeremy/Jarvis-by-Jeremy.git
+cd Jarvis-by-Jeremy
 
 python -m venv .venv
 .venv\Scripts\activate

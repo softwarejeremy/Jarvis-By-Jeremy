@@ -2,10 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-J.A.R.V.I.S. (Cositas-Skypie): asistente de voz personal construido sobre el
-Claude Agent SDK. El uso de cara al usuario está en `README.md`; este archivo
-es para lo que hace falta para desarrollar aquí — comandos, arquitectura, y lo
-que el código por sí solo no cuenta.
+J.A.R.V.I.S.: asistente de voz personal construido sobre el Claude Agent SDK.
+El uso de cara al usuario está en `README.md`; este archivo es para lo que hace
+falta para desarrollar aquí — comandos, arquitectura, y lo que el código por sí
+solo no cuenta.
+
+**Hay dos repositorios, y no son intercambiables**: se desarrolla en
+`softwarejeremy/Cositas-Skypie` (privado, con PR), y el proyecto se publica en
+`softwarejeremy/Jarvis-by-Jeremy` (público). El público se mantiene empujando
+`main` desde el privado, nunca al revés, y **el privado no se hace público
+jamás**: tras los force-push de la limpieza de historial, GitHub conserva ahí
+los objetos viejos con los datos personales, accesibles por su SHA.
 
 ## Comandos
 
