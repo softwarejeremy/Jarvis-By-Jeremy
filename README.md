@@ -1,1 +1,615 @@
-# Cositas-Skypie
+# J.A.R.V.I.S.
+
+[![CI](https://github.com/softwarejeremy/Jarvis-by-Jeremy/actions/workflows/ci.yml/badge.svg)](https://github.com/softwarejeremy/Jarvis-by-Jeremy/actions/workflows/ci.yml)
+
+Un asistente personal por voz construido sobre el **Claude Agent SDK**. No es un
+chatbot con micrófono: es el mismo motor agéntico que usa Claude Code —con acceso a
+tus archivos, a la terminal y a la web— envuelto en una capa de voz, personalidad y
+permisos.
+
+Le dices *"Hey Jarvis"*, le hablas, y te contesta. Si le pides algo, lo hace. Y antes
+de tocar nada importante, te pregunta en voz alta.
+
+```
+     ██  █████  ██████  ██    ██ ██ ███████
+     ██ ██   ██ ██   ██ ██    ██ ██ ██
+     ██ ███████ ██████  ██    ██ ██ ███████
+██   ██ ██   ██ ██   ██  ██  ██  ██      ██
+ █████  ██   ██ ██   ██   ████   ██ ███████
+```
+
+---
+
+## Qué sabe hacer
+
+| | |
+|---|---|
+| **Conversar** | Charla natural en español, con memoria del hilo y personalidad propia |
+| **Controlar tu PC** | Leer y escribir archivos, ejecutar comandos, buscar en tus carpetas |
+| **Buscar en la web** | Información actual, no sólo lo que sabe de memoria |
+| **Recordar** | Sabe quién eres y en qué andas, también mañana |
+| **Pedir permiso** | Antes de escribir, borrar o ejecutar, te lo dice y espera tu "sí" |
+
+---
+
+## Instalación en Windows
+
+### 1. Requisitos previos
+
+**Python 3.11** — [python.org/downloads](https://www.python.org/downloads/).
+Marca **"Add Python to PATH"** durante la instalación.
+
+**El CLI de Claude Code.** El Agent SDK lo arranca por debajo; sin él no hay cerebro.
+En Windows instala el ejecutable nativo:
+
+```powershell
+irm https://claude.ai/install.ps1 | iex
+```
+
+No sirve `npm install -g @anthropic-ai/claude-code`: en Windows deja un envoltorio
+`claude.cmd` que el SDK se niega a ejecutar. El síntoma es engañoso —J.A.R.V.I.S.
+arranca, escucha y transcribe, pero no contesta nunca—, así que `--diag` lo señala
+como fallo aunque encuentre el CLI.
+
+### 2. Permitir scripts en PowerShell
+
+Windows viene con la ejecución de scripts desactivada, así que activar el entorno virtual
+falla con *"No se puede cargar el archivo ... Activate.ps1 porque la ejecución de scripts
+está deshabilitada en este sistema"*. Le pasa a todo el mundo la primera vez. Ejecuta una
+sola vez:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+Permite ejecutar los scripts que creas en tu equipo, pero sigue exigiendo firma digital a
+los descargados de internet. `-Scope CurrentUser` significa que sólo afecta a tu usuario y
+**no hace falta ser administrador**.
+
+Si prefieres no cambiar la configuración, sáltate la activación llamando al Python del
+entorno por su ruta: `.venv\Scripts\python.exe -m pip install ...`, y lo mismo para
+ejecutarlo. No uses `activate.bat` desde PowerShell: no da error, pero la activación se
+pierde y acabarías instalando en el Python global sin darte cuenta.
+
+### 3. El proyecto
+
+```powershell
+git clone https://github.com/softwarejeremy/Jarvis-by-Jeremy.git
+cd Jarvis-by-Jeremy
+
+python -m venv .venv
+.venv\Scripts\activate
+
+pip install -e ".[voice,windows,web,bandeja]"
+```
+
+La primera vez se descargarán el modelo de transcripción (~500 MB para `small`) y el
+del wake word (~2 MB). Sólo ocurre una vez.
+
+### 4. Tu clave de Anthropic
+
+```powershell
+copy .env.example .env
+notepad .env
+```
+
+Pega tu clave en `ANTHROPIC_API_KEY`. Se saca en
+[console.anthropic.com](https://console.anthropic.com) → *Settings* → *API Keys*, y hay
+que cargar saldo en *Billing* (desde 5 USD).
+
+`.env` está en `.gitignore`: tu clave nunca se sube a GitHub.
+
+### 5. Comprueba que todo está en su sitio
+
+```powershell
+python -m jarvis --diag
+```
+
+Revisa cada eslabón por separado —Python, el CLI, las dependencias, los dispositivos de
+audio, la voz, la transcripción y el micrófono— y te dice exactamente cuál falla.
+**Arregla cualquier ✗ antes de seguir.**
+
+### 6. En marcha
+
+```powershell
+python -m jarvis
+```
+
+Di **"Hey Jarvis"** y habla. O pulsa **Ctrl+Alt+J**.
+
+---
+
+## Modos de ejecución
+
+```powershell
+python -m jarvis                  # voz completa: wake word + atajo
+python -m jarvis --texto          # escribes tú, él contesta con voz
+python -m jarvis --demo           # sin clave ni gasto: respuestas simuladas
+python -m jarvis --muda           # sin audio de salida, sólo texto
+python -m jarvis --sim audio.wav  # inyecta un WAV en vez del micrófono
+python -m jarvis --web            # además, el HUD en el navegador (se abre solo)
+python -m jarvis --web --lan      # y también desde el móvil, en la misma wifi
+python -m jarvis --web --lan --https  # y poder hablarle por voz desde el móvil
+python -m jarvis --diag           # diagnóstico
+```
+
+Otras banderas útiles: `--sin-navegador` (con `--web`, no abrir la pestaña solo) y
+`--sin-bandeja` (no poner el icono en la bandeja del sistema).
+
+**Empieza por `--demo --texto`.** Funciona sin clave y sin gastar nada, y te deja ver
+el flujo completo antes de configurar la API.
+
+---
+
+## El HUD en el navegador
+
+```powershell
+python -m jarvis --web
+```
+
+Se abre solo en `http://localhost:8765` en cuanto el servidor está listo (si prefieres
+que no, añade `--sin-navegador`). Verás el reactor cambiando de color según lo que esté
+haciendo, la conversación apareciendo palabra a palabra, las herramientas que usa y el
+gasto acumulado.
+
+Sin `--lan`, el HUD **sólo escucha en este equipo**: nadie más en la wifi puede
+abrirlo, ni por accidente. Cada arranque genera además un token nuevo (lo verás
+como `?t=...` al final de la URL que se imprime): sin él, ni la página ni el
+móvil pueden hablar con el núcleo — es lo único que hace falta para que abrir
+el enlace de siempre siga bastando, pero que nadie más pueda leer la
+conversación ni, sobre todo, aprobar en tu lugar un permiso que Claude pida.
+
+Por defecto intenta abrirlo en **Chrome** aunque no sea tu navegador por defecto de
+Windows; si no lo encuentra, cae al de siempre (normalmente Edge). Para ir siempre al
+navegador por defecto, pon en `config.toml`:
+
+```toml
+[ui]
+navegador = "sistema"
+```
+
+Es el **mismo núcleo**: lo que digas por voz sale en la pantalla, y lo que escribas
+en la pantalla lo contesta por voz. No son dos programas.
+
+Recargar la página, o entrar desde otro dispositivo a media conversación, no
+te deja con el HUD en blanco: repone los turnos de hoy en cuanto conecta. La
+conversación queda registrada en disco día a día, y el desplegable sobre el
+panel de conversación deja repasar cualquier día anterior.
+
+**Desde el móvil**: hace falta `--lan` — sin ella el HUD no escucha en la red y
+la segunda dirección ni se calcula:
+
+```powershell
+python -m jarvis --web --lan
+```
+
+```
+HUD aquí:       http://localhost:8765/?t=Xy...
+desde el móvil: http://192.168.1.37:8765/?t=Xy...  (misma red wifi)
+```
+
+Escribe esa segunda en el navegador del móvil, con el PC encendido y ambos en la
+misma wifi — el token va incluido, así que no hay nada que teclear aparte de la
+URL. La primera vez Windows preguntará si permites la conexión: hay que
+decir que sí **para la red privada**. Si no aparece la segunda línea, es que el
+equipo no está en ninguna red local.
+
+Para no tener que teclearla, debajo se imprime un **código QR**: apunta la
+cámara del móvil a la terminal y se abre solo. El mismo QR, más cómodo de
+escanear, está también en el HUD: el icono de teléfono junto al indicador de
+conexión abre un overlay con el código y la URL en texto.
+
+Una vez abierto en el móvil, "Añadir a la pantalla de inicio" desde el menú
+del navegador deja un icono con el que volver de un toque, sin pasar otra vez
+por el QR. Con el certificado autofirmado de `--https`, Android lo instala
+como acceso directo en vez de como app «instalada» de verdad — para abrirlo
+de un toque da exactamente igual.
+
+### Hablarle desde el móvil
+
+```powershell
+python -m jarvis --web --lan --https
+```
+
+Con `--https`, el botón se convierte en **mantén pulsado para hablar**: grabas con
+el micrófono del propio teléfono y J.A.R.V.I.S. te contesta.
+
+El `--https` no es un capricho. Los navegadores sólo dan acceso al micrófono en
+*contexto seguro* —HTTPS o `localhost`—, y sobre `http://192.168.1.x`
+`navigator.mediaDevices` sencillamente no existe. Sin TLS no hay micrófono, y punto.
+
+El certificado se genera solo la primera vez y se guarda; **es autofirmado**, así que
+el navegador avisará de que el sitio no es de confianza. Acéptalo: es tu propio
+equipo, en tu propia red. Sólo hay que hacerlo una vez por dispositivo.
+
+Si cambias de wifi y el equipo recibe otra IP, el certificado se rehace solo para
+incluirla.
+
+Si no hay micrófono por ningún lado, el botón aparece desactivado explicando por qué,
+y siempre queda la entrada por texto. Con `--web --texto` el teclado del navegador es
+la única entrada, sin tocar ningún micrófono.
+
+### Pausar el micrófono
+
+El botón **Pausar micrófono** (también disponible desde la bandeja del sistema, ver
+más abajo) hace que J.A.R.V.I.S. deje de atender al «Hey Jarvis» sin cerrar el
+programa: útil si tienes visita y no quieres que te escuche. En pausa, ni el atajo de
+teclado ni el botón de escuchar hacen nada —avisan de que está en pausa en vez de
+callarse sin más—, y sigue así hasta que le des a **Reanudar micrófono**.
+
+---
+
+## Cuánto cuesta
+
+Se paga por uso, no por mensualidad. Estas cifras están **medidas en este proyecto**,
+no estimadas:
+
+| | Coste |
+|---|---|
+| Primer turno de una sesión (caché fría) | ~$0.055 |
+| Cada turno siguiente | **~$0.017** |
+| Un día de uso intenso (~100 turnos) | **~$1.70** |
+
+Hay un tope de gasto por sesión (`max_budget_usd`, por defecto $2) que corta
+automáticamente, y el coste acumulado se muestra en pantalla en cada turno. El HUD
+web además lleva la cuenta de **hoy**, sumando todas las sesiones del día — diez
+sesiones de $2 no se notarían mirando sólo el tope por sesión — y avisa en ámbar al
+acercarse al tope y en rojo al superarlo.
+
+Si quieres gastar menos, `model = "claude-sonnet-5"` en `config.toml` cuesta poco más de
+la mitad y para conversar va sobrado.
+
+---
+
+## Configuración
+
+```powershell
+copy config.example.toml config.toml
+```
+
+Ese `copy` no es opcional: editar `config.example.toml` directamente no cambia nada,
+porque el que se lee es `config.toml`. Si algún ajuste parece no aplicarse,
+`python -m jarvis --diag` dice en su primera sección qué archivos ha leído de verdad
+y con qué modelo se ha quedado.
+
+Todo tiene valores por defecto razonables. Los ajustes que más se tocan:
+
+| Si te pasa esto | Cambia esto |
+|---|---|
+| Tarda en contestar cuando terminas de hablar | `vad.silence_ms` más bajo (p. ej. 500) |
+| Te corta a media frase | `vad.silence_ms` más alto (p. ej. 900) |
+| Se despierta solo | `wakeword.threshold` a 0.7 |
+| No te oye al decir "Hey Jarvis" | `wakeword.threshold` a 0.4 |
+| Va lento transcribiendo | `stt.model_size = "tiny"` |
+| Se interrumpe a sí mismo | `audio.barge_in = false` |
+| Quieres otra voz | `tts.voice` (hay una lista en el archivo) |
+
+### Voz de mejor calidad: XTTS-v2 (necesita GPU NVIDIA)
+
+edge-tts (el motor por defecto) es gratis y suena bien, pero si tienes una GPU
+NVIDIA hay una opción notablemente más natural, y también gratis: **XTTS-v2**,
+que corre en tu propio equipo e incluso puede clonar una voz a partir de un
+audio de referencia corto.
+
+```powershell
+pip install -e ".[xtts]"
+```
+
+Instala PyTorch y descarga el modelo (~2 GB) la primera vez que se use. Luego,
+en `config.toml`:
+
+```toml
+[tts]
+engine = "xtts"
+```
+
+Cosas a tener en cuenta:
+- **Necesita GPU para ser rápido.** En CPU cada frase tarda varios segundos —
+  peor que el silencio que se intenta evitar. `python -m jarvis --diag` te
+  dice si detecta CUDA y cuánta VRAM libre hay.
+- **Comparte VRAM con la transcripción** (faster-whisper usa la misma GPU). Si
+  se quedan sin memoria entre los dos, baja `tts.xtts_dispositivo = "cpu"` o
+  usa un modelo de `stt.model_size` más pequeño.
+- **Clonar una voz**: pon la ruta a un WAV corto (~6 segundos) tuyo, o de
+  cualquier grabación sobre la que tengas derechos, en `tts.xtts_speaker_wav`.
+  Sin eso, usa un hablante preentrenado del propio modelo.
+
+---
+
+## Qué puede hacer con tu equipo
+
+Además de leer y escribir archivos y buscar en la web, tiene herramientas propias:
+
+| Le dices | Hace | ¿Pregunta? |
+|---|---|---|
+| «sube el volumen», «silencio» | Volumen del sistema | No |
+| «pausa», «siguiente canción» | Reproducción (play/pausa, pista) | No |
+| «qué hora es» | Fecha y hora | No |
+| «cómo va el equipo», «cuánta batería queda» | CPU, RAM, disco y batería | No |
+| «avísame en 10 minutos», «pon una alarma de 5 minutos» | Aviso hablado pasado un rato | No |
+| «abre Spotify», «abre mi carpeta de proyectos» | Lanza programas, archivos o webs | **Sí** |
+| «bloquea la pantalla» | Bloquea la sesión | **Sí** |
+| «recuerda que…», «olvida lo de…» | Memoria de largo plazo | No |
+| «busca mi doc de notas», «lee el documento de la reunión» | Busca y lee un Google Doc | No |
+| «añade esto a mi doc de notas», «cambia X por Y en el documento» | Edita un Google Doc existente | **Sí** |
+| «crea un documento de Google llamado…» | Crea un Google Doc nuevo | **Sí** |
+
+El panel **Memoria** del HUD web muestra lo que tiene anotado, organizado por
+categoría, con un botón para olvidar cada entrada sin tener que pedírselo por
+voz ni abrir los archivos a mano.
+
+El criterio de qué pregunta y qué no es simple: se ejecuta solo lo que no puede
+romper nada y cuyo efecto es evidente e inmediatamente reversible — oír el volumen
+subir es su propia confirmación. Lanzar programas no cumple eso, así que pregunta.
+
+**No abre intérpretes de comandos** (`cmd`, `powershell`, `bash`…) aunque se lo
+autorices. Todo comando de shell se lee en voz alta antes de ejecutarse; si pudiera
+«abrir» una consola, bastaría eso para ejecutar cualquier cosa sin que nadie la
+enunciara, y el sistema de permisos entero quedaría sin efecto. Por el mismo
+motivo, tampoco abre archivos por ruta cuya extensión ejecute código por sí
+sola (`.bat`, `.exe`, `.vbs`, `.hta`…): sólo documentos, imágenes y multimedia
+de extensión conocida, o programas por nombre (`spotify`, `notepad`), que
+resuelve el propio sistema operativo.
+
+### Google Docs
+
+Buscar y leer un documento no preguntan nada; añadir texto, reemplazar un
+fragmento o crear un documento nuevo sí, exactamente igual que abrir un
+programa — es un cambio real en algo tuyo.
+
+**Configuración, una sola vez:**
+
+```powershell
+pip install -e ".[google]"
+```
+
+1. Entra a [console.cloud.google.com](https://console.cloud.google.com) y crea
+   un proyecto (o usa uno que ya tengas).
+2. En **APIs y servicios → Biblioteca**, activa **Google Docs API** y
+   **Google Drive API**.
+3. En **APIs y servicios → Pantalla de consentimiento OAuth**, elige **Externo**,
+   rellena lo mínimo (nombre de la app, tu correo) y añádete a ti mismo como
+   *usuario de prueba* — no hace falta publicarla para uso personal.
+4. En **APIs y servicios → Credenciales → Crear credenciales → ID de cliente de
+   OAuth**, tipo **Aplicación de escritorio**. Descarga el JSON.
+5. Guarda ese archivo donde quieras (por ejemplo, junto a tu `config.toml`) y
+   apunta a él en `config.toml`:
+
+```toml
+[google]
+client_secret_path = "C:/Users/TU-USUARIO/.jarvis/client_secret.json"
+```
+
+La primera vez que le pidas algo de Google Docs, se abre el navegador para que
+autorices el acceso; las siguientes veces el token se refresca solo, guardado
+junto a la memoria en tu carpeta de datos (`~/.jarvis/google_token.json`,
+nunca en `.env` ni en el repositorio).
+
+Busca los documentos **por nombre exacto**: «mis notas de la reunión» tiene
+que coincidir con el título tal cual está en Drive.
+
+---
+
+## Permisos: cómo evita romperte cosas
+
+El reconocimiento de voz se equivoca, y un *"borra eso"* mal entendido no tiene deshacer.
+Hay tres barreras, de más fuerte a más débil:
+
+1. **Rutas.** Escribir fuera de las carpetas autorizadas se deniega sin preguntar
+   siquiera. Se configuran en `permissions.writable_paths`.
+2. **Confirmación.** Escribir, editar o ejecutar exige un "sí" tuyo. Los
+   comandos de shell se leen **enteros y literales** antes de pedirte permiso.
+   Puedes contestar hablando o, si estás en el HUD web —también desde el
+   móvil, o sin micrófono a mano—, con los botones **Sí** / **No** del propio
+   aviso.
+3. **El silencio deniega.** Si no contestas en 12 segundos, la respuesta es no. Si tu
+   respuesta es ambigua ("no sé"), vuelve a preguntar; a la segunda, deniega.
+
+Leer archivos, buscar en la web y consultar su memoria no piden permiso: no pueden
+romper nada.
+
+---
+
+## El icono de la bandeja
+
+Sin ventana de consola, la cara de J.A.R.V.I.S. es un pequeño reactor en el área de
+notificación (junto al reloj), que cambia de color con el estado — el mismo color que
+el HUD del navegador. Al arrancar suelta un aviso ("J.A.R.V.I.S. en línea") con la URL
+del HUD, y el clic derecho abre un menú con:
+
+- **Abrir el HUD** (sólo si arrancó con `--web`)
+- **Escuchar ahora** / **Silenciar**
+- **Micrófono en pausa** — el mismo interruptor que el botón del HUD
+- **Arrancar con Windows** — instala o quita el arranque automático sin tocar la terminal
+- **Salir**
+
+Si por lo que sea no aparece (falta el extra `bandeja`, o el sistema no tiene bandeja de
+notificación), J.A.R.V.I.S. sigue funcionando igual: se pierde el icono, no el asistente.
+Se puede desactivar a propósito con `--sin-bandeja`.
+
+---
+
+## Arrancar solo con Windows
+
+```powershell
+python -m jarvis --arrancar-con-windows --web --lan --https
+```
+
+Deja un pequeño script en tu carpeta de Inicio (`shell:startup`) que lanza
+J.A.R.V.I.S. al iniciar sesión, **sin ventana de consola** — usa `pythonw.exe`,
+que no la abre, y lo lanza en modo oculto. Las banderas que pongas después de
+`--arrancar-con-windows` son las que arrancarán cada mañana: si aquí pones
+`--web --lan --https`, eso es lo que se inicia solo. El icono de la bandeja se
+encarga de avisar de que está vivo; por eso, al guardar la orden para cada
+mañana se añade `--sin-navegador` en automático — abrir una pestaña sola cada
+inicio de sesión sería intrusivo.
+
+No toca el registro ni el Programador de tareas — es sólo un archivo en tu
+carpeta de usuario, sin permisos de administrador, y se desactiva borrándolo a
+mano, desde el menú del icono de la bandeja, o con:
+
+```powershell
+python -m jarvis --quitar-del-inicio
+```
+
+Bórralo desde `shell:startup` si prefieres hacerlo sin la terminal.
+
+**Si ya había uno arrancado** (por ejemplo, el que puso en marcha el sistema) y lo
+vuelves a lanzar a mano, J.A.R.V.I.S. lo detecta, te abre el HUD del que ya está
+vivo y se cierra él solo — no compiten dos instancias por el micrófono ni por el
+puerto del HUD.
+
+---
+
+## Cómo está construido
+
+```
+jarvis/
+├── config.py         Configuración: .env (secretos) + config.toml
+├── events.py         Bus de eventos y estados
+├── text.py           Troceo en frases para el TTS incremental
+├── core/
+│   ├── core.py       La máquina de estados
+│   ├── agent.py      Envoltura del Claude Agent SDK
+│   ├── personality.py El carácter de J.A.R.V.I.S.  ← edítalo a tu gusto
+│   ├── permissions.py Las tres barreras
+│   ├── memory.py     Memoria persistente en Markdown
+│   ├── historial.py  Registro de conversaciones, un JSONL por día
+│   └── gasto.py      Gasto acumulado, por día
+├── audio/
+│   ├── capture.py    Micrófono siempre abierto, con búfer de contexto
+│   ├── wakeword.py   "Hey Jarvis" (openWakeWord, local)
+│   ├── vad.py        Silero: cuándo empiezas y acabas de hablar
+│   ├── stt.py        faster-whisper, en local
+│   ├── player.py     Reproducción interrumpible
+│   └── tts/          edge · sapi · elevenlabs · xtts
+├── hotkey.py         Push-to-talk global
+├── instancia.py      Un solo J.A.R.V.I.S. por equipo (cerrojo por socket)
+├── inicio.py         Arranque automático con Windows
+├── tools/            Memoria, control del equipo y Google Docs, expuestos a Claude vía MCP
+├── server/           HUD web: FastAPI + WebSocket, micrófono del navegador y TLS
+└── ui/
+    ├── console.py    HUD de terminal
+    ├── bandeja.py    Icono en el área de notificación
+    ├── icono.py      El reactor en miniatura, dibujado por código
+    └── navegador.py  Abre el HUD cuando el servidor ya escucha
+```
+
+**El principio de diseño:** el núcleo no sabe si lo está mirando una terminal, un
+navegador o un test. Sólo publica eventos. Por eso se puede añadir una interfaz web sin
+tocar una línea de la lógica, y por eso los tests pueden recorrer el ciclo completo sin
+micrófono.
+
+**La decisión que más se nota:** J.A.R.V.I.S. empieza a hablar en cuanto Claude termina
+la **primera frase**, no la respuesta entera. Eso recorta cerca de un segundo de silencio
+incómodo en cada respuesta.
+
+### La personalidad
+
+Está toda en `jarvis/core/personality.py`, en castellano y sin código de por medio. Si
+lo quieres más seco, más simpático o que te trate de tú, es el único archivo que hay
+que tocar.
+
+---
+
+## Desarrollo
+
+```bash
+pip install -e ".[voice,dev,web,bandeja]"
+pytest              # 364 tests, sin necesidad de micrófono
+ruff check jarvis tests
+```
+
+En cada push, GitHub Actions corre lo mismo sobre Python 3.10, 3.11 y 3.12.
+
+Los tests cubren la máquina de estados completa, las tres barreras de permisos, el
+troceo en frases, el VAD, la memoria, la selección de dispositivo de transcripción
+y el servidor web. Todo lo que toca hardware tiene un doble en
+`tests/conftest.py`.
+
+---
+
+## Problemas frecuentes
+
+**"No se puede cargar el archivo Activate.ps1 ... la ejecución de scripts está
+deshabilitada"** → Es la política de PowerShell, no un fallo del proyecto. Mira el paso 2
+de la instalación: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`.
+
+**"No encuentro el CLI de Claude Code"**, o **escucha y transcribe pero nunca contesta**
+→ En Windows, `irm https://claude.ai/install.ps1 | iex`. Si lo instalaste con npm tienes
+un `claude.cmd` que el SDK no ejecuta; `--diag` lo distingue de no tenerlo.
+
+**No se oye nada** → `python -m jarvis --diag` lista los dispositivos; pon el número
+correcto en `audio.output_device`.
+
+**No me oye** → El diagnóstico incluye una prueba de micrófono con medidor de nivel. Si
+el pico se queda por debajo de 0.01, el micrófono está silenciado o Windows está usando
+otro.
+
+**El diagnóstico dice "Saturación"** → Tu micrófono graba demasiado alto y la señal
+recorta, lo que empeora bastante la transcripción. Ajustes de sonido de Windows → tu
+micrófono → baja el **volumen de entrada** a ~70 y desactiva el **refuerzo de micrófono**.
+Repite `--diag` hasta que el pico quede entre 0.3 y 0.8.
+
+**"Requested float16 compute type, but the target device..."** → El modelo intentó usar la
+GPU y no pudo. Desde la versión actual esto se detecta solo y cae a CPU, avisándote. Si
+aun así aparece, fuerza CPU poniendo `device = "cpu"` en la sección `[stt]` de
+`config.toml`.
+
+**Tengo GPU NVIDIA pero va en CPU**, o **"Library cublas64_12.dll is not found or cannot
+be loaded"** al transcribir → Faltan cuBLAS, cuDNN 9 y el runtime de CUDA para CUDA 12 —
+los tres, no sólo los dos primeros: cuBLAS depende del runtime para inicializarse, y sin
+él carga bien aislado pero falla igual en la primera transcripción real. Antes de instalar
+el CUDA Toolkit completo de NVIDIA (varios GB), prueba lo más ligero:
+
+```powershell
+pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cuda-runtime-cu12
+```
+
+J.A.R.V.I.S. ya sabe encontrar sus DLL solo (Windows no las busca ahí por su cuenta). Si
+`python -m jarvis --diag` sigue avisando de GPU sin aprovechar **después** de instalar esos
+paquetes, ya lo detecta y te lo dice de otra forma: el problema no es de instalación, sino
+del driver de NVIDIA o de la versión de CUDA — ahí sí hace falta el CUDA Toolkit completo.
+Mientras tanto funciona igual en CPU, sólo más despacio; con GPU podrías subir a
+`stt.model_size = "medium"`, más preciso en español.
+
+**Se queda en «transcribiendo» y no sale** → Casi siempre es la primera vez que
+transcribe y está **descargando el modelo** (unos 500 MB), que se ve igual que un
+cuelgue. Ejecuta `python -m jarvis --diag` una vez para bajarlo con calma. Desde la
+versión actual hay un tope de tiempo (`stt.timeout_s`, 45 s) y un vigilante que
+devuelve a J.A.R.V.I.S. a reposo si algún estado se atasca, avisando de lo ocurrido.
+
+**Se interrumpe solo mientras habla** → Está oyendo su propia voz por los altavoces.
+Usa auriculares, o pon `audio.barge_in = false`.
+
+**El atajo de teclado no funciona** → En Windows debería ir sin más. Si otra aplicación
+ya usa Ctrl+Alt+J, cambia `hotkey.combo`.
+
+---
+
+## Estado del proyecto
+
+Implementado y probado:
+
+- [x] Conversación con Claude, con personalidad y streaming
+- [x] Voz (edge-tts, SAPI, ElevenLabs, XTTS-v2 con GPU) con reproducción interrumpible
+- [x] Escucha: captura, VAD, transcripción local
+- [x] Wake word "Hey Jarvis" y push-to-talk
+- [x] Barge-in: puedes interrumpirle hablando
+- [x] Permisos con confirmación por voz
+- [x] Memoria de largo plazo
+- [x] Diagnóstico y modos demo/simulación
+- [x] HUD web, accesible desde el móvil, con micrófono del navegador
+- [x] Herramientas de sistema: volumen, medios, abrir programas, bloquear, estado del equipo, temporizadores
+- [x] Google Docs: buscar, leer, añadir, reemplazar y crear documentos
+- [x] Integración continua
+- [x] Arranque automático con Windows
+- [x] Icono en la bandeja del sistema, pausa del micrófono e instancia única
+
+Pendiente:
+
+
+> **Nota sobre las pruebas.** El código de audio se ha desarrollado y verificado con
+> tests y en modo simulación sobre Linux, sin hardware de sonido. Los tests cubren toda
+> la lógica, pero **la primera ejecución real en Windows es la tuya**: empieza por
+> `python -m jarvis --diag`, que está hecho justo para eso.

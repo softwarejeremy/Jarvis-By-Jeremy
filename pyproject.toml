@@ -1,0 +1,95 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jarvis"
+version = "0.3.0"
+description = "J.A.R.V.I.S. — asistente de voz construido sobre el Claude Agent SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# Núcleo: lo mínimo para conversar con J.A.R.V.I.S. por texto.
+# Todo lo de audio vive en el extra `voice` para que los tests y la CI
+# corran sin tarjeta de sonido ni modelos pesados.
+dependencies = [
+    "claude-agent-sdk>=0.2.140",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dotenv>=1.0",
+    "rich>=13.7",
+    # config.py lee TOML. `tomllib` es estándar desde 3.11; en 3.10 hace falta
+    # este respaldo, sin el cual el paquete ni siquiera importa.
+    'tomli>=2.0; python_version < "3.11"',
+    # Estado del equipo (CPU/RAM/disco/batería) sin reimplementar por SO como
+    # el resto de jarvis/tools/sistema.py: aquí sí compensa la dependencia.
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+voice = [
+    "sounddevice>=0.4.6",   # captura y reproducción
+    "numpy>=1.24",
+    "faster-whisper>=1.0",  # STT + modelo Silero VAD (ONNX, sin torch)
+    "onnxruntime>=1.17",    # runtime del VAD y del wake word
+    "openwakeword>=0.6",    # wake word "hey jarvis"
+    "edge-tts>=6.1",        # TTS neuronal gratuito
+    "av>=11.0",             # decodifica el MP3 del TTS a PCM, sin ffmpeg
+    "pynput>=1.7",          # push-to-talk global
+]
+elevenlabs = ["httpx>=0.27"]
+windows = ["pywin32>=306"]  # voz SAPI de respaldo, 100% offline
+xtts = [
+    # Fork mantenido por la comunidad: Coqui como empresa cerró y el paquete
+    # original (`TTS`) ya no recibe actualizaciones.
+    "coqui-tts>=0.24",
+    "torch>=2.1",
+]
+google = [
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.2",
+    "google-auth-httplib2>=0.2",
+]
+web = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    # Certificado autofirmado para --https, sin el cual el navegador del
+    # móvil no da acceso al micrófono.
+    "cryptography>=42.0",
+    # Código QR para abrir el HUD desde el móvil sin teclear la IP. Puro
+    # Python: ni SVG ni el ASCII de la terminal necesitan Pillow.
+    "qrcode>=7.4",
+]
+bandeja = [
+    # Icono en el área de notificación. Extra propio y no dentro de `windows`
+    # ni de `web`: en Windows es donde más falta hace —arrancando con el
+    # sistema no hay consola ninguna— pero también funciona en Linux, y `web`
+    # tiene que seguir instalándose en un servidor sin escritorio.
+    "pystray>=0.19.5",
+    "pillow>=10.0",  # pystray exige un PIL.Image; no es una dependencia extra
+]
+keyring = [
+    # Almacén de credenciales del sistema (Credential Manager en Windows,
+    # Keychain en macOS, Secret Service en Linux) para no dejar las API keys
+    # en texto plano en `.env`.
+    "keyring>=25.0",
+]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.5"]
+
+[project.scripts]
+jarvis = "jarvis.main:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jarvis"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

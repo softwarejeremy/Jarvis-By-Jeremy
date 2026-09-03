@@ -1,0 +1,20 @@
+# Red de seguridad local: los mismos hallazgos que la CI (secretos, rutas
+# locales de Windows), pero antes de que el commit exista siquiera.
+#
+# Usa un hook "local" en vez de fijar una versión del propio repositorio de
+# gitleaks: así no hay una revisión que quede desactualizada con el tiempo.
+# Instalación, una vez por clon:
+#
+#   pip install pre-commit
+#   pre-commit install
+#
+# Hace falta tener `gitleaks` en el PATH (ver README, o
+# https://github.com/gitleaks/gitleaks#installing).
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (busca secretos y rutas locales antes de commitear)
+        entry: gitleaks git --staged --redact --no-banner --config .gitleaks.toml
+        language: system
+        pass_filenames: false

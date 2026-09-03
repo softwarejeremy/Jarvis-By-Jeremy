@@ -1,0 +1,87 @@
+# Comprobaciones automáticas en cada push y en el PR.
+#
+# No se instala el extra `voice` completo a propósito: `sounddevice` necesita
+# PortAudio y `pynput` un servidor gráfico, ninguno de los dos existe en un
+# runner y ningún test los usa. Se instala sólo lo que los tests ejercitan de
+# verdad, con lo que la CI tarda un par de minutos en vez de diez.
+#
+# Los tests que necesitan descargar el modelo del wake word se saltan solos si
+# openWakeWord no está: no queremos que la CI dependa de la red.
+
+name: CI
+
+# Sólo `main` en push: las ramas con PR abierto ya se comprueban por el
+# evento `pull_request`, y disparar ambos gastaba el doble de minutos en cada
+# empujón para obtener exactamente el mismo resultado.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Un push nuevo cancela la ejecución anterior de la misma rama: no tiene
+# sentido gastar minutos comprobando un commit ya superado.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: Buscar secretos en el historial (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # gitleaks recorre el historial completo, no sólo el último commit
+
+      - name: Instalar gitleaks
+        run: go install github.com/zricethezav/gitleaks/v8@latest
+
+      - name: Escanear
+        run: |
+          GITLEAKS="$(go env GOPATH)/bin/gitleaks"
+          "$GITLEAKS" git . --config .gitleaks.toml --no-banner --redact
+
+  comprobar:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false          # queremos ver TODAS las versiones que fallan
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Instalar
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,web]" numpy faster-whisper onnxruntime
+
+      # Sólo lint. No se comprueba el formato automático a propósito: buena
+      # parte de este código alinea comentarios y tablas a mano para que se
+      # lea mejor, y `ruff format` los desharía. Una comprobación que siempre
+      # falla y se ignora sólo enseña a ignorar las comprobaciones.
+      - name: Estilo y errores estáticos
+        run: ruff check jarvis tests
+
+      - name: Tests
+        run: pytest -q --durations=10
+
+      - name: Comprobar que el paquete importa sin los extras
+        # El núcleo tiene que poder importarse en un equipo sin audio: es lo
+        # que permite el modo texto y lo que hace testeable todo lo demás.
+        run: |
+          python -c "import jarvis, jarvis.config, jarvis.core.core, jarvis.diag; print('importa bien')"
+          python -c "from jarvis.config import load_settings; load_settings(); print('configuración cargada')"

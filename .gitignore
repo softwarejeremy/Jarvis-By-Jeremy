@@ -1,0 +1,44 @@
+# Secretos — NUNCA subir
+.env
+.env.*
+!.env.example
+config.toml
+*.pem
+*.key
+*.crt
+client_secret*.json
+*token*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# Datos locales de J.A.R.V.I.S.
+.jarvis/
+*.wav.out
+salida_tts/
+
+# Modelos descargados
+models/
+*.onnx
+*.tflite
+
+# Salida generada por el skill graphify (grafo, caché, visualización)
+graphify-out/
+
+# Config local del harness (hooks con rutas absolutas de esta máquina, p.ej.
+# el hook-guard que instala graphify): cada equipo tiene la suya.
+.claude/settings.local.json
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

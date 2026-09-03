@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0704">
+<title>J.A.R.V.I.S.</title>
+<link rel="stylesheet" href="/estaticos/estilo.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='%23f0a83c' stroke-width='8'/><circle cx='50' cy='50' r='16' fill='%23f0a83c'/></svg>">
+<link rel="manifest" href="/estaticos/manifest.json">
+<link rel="apple-touch-icon" href="/estaticos-generados/icono-180.png">
+</head>
+<body>
+
+<div class="rejilla" aria-hidden="true"></div>
+
+<header class="cabecera">
+  <div class="marca">
+    <span class="marca-nombre">J.A.R.V.I.S.</span>
+    <span class="marca-sub" id="subtitulo">conectando…</span>
+  </div>
+  <div class="indicadores">
+    <div class="indicador"><span class="etiqueta">modelo</span><span id="modelo">—</span></div>
+    <div class="indicador"><span class="etiqueta">voz</span><span id="voz">—</span></div>
+    <div class="indicador"><span class="etiqueta">sesión</span><span id="coste">$0.0000</span></div>
+    <div class="indicador" id="indicador-hoy"><span class="etiqueta">hoy</span><span id="coste-hoy">$0.0000</span></div>
+    <div class="indicador conexion" id="conexion" data-estado="desconectado">
+      <span class="punto"></span><span id="conexion-texto">sin conexión</span>
+    </div>
+    <button id="btn-movil" class="boton-movil" type="button" title="Abrir desde el móvil" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ── Acceso desde el móvil ─────────────────────────────────── -->
+<div class="movil" id="movil-overlay" hidden>
+  <div class="movil-caja">
+    <button class="movil-cerrar" id="btn-movil-cerrar" type="button" aria-label="Cerrar">✕</button>
+    <p class="movil-titulo">Abrir desde el móvil</p>
+    <div class="movil-qr" id="movil-qr"></div>
+    <p class="movil-url" id="movil-url"></p>
+    <p class="movil-nota">Misma red wifi. Apunte la cámara del teléfono al código.</p>
+  </div>
+</div>
+
+<main class="tablero">
+
+  <!-- ── Reactor ───────────────────────────────────────────── -->
+  <section class="panel panel-reactor" data-estado="dormido">
+    <div class="reactor" id="reactor" data-estado="dormido">
+      <svg viewBox="0 0 200 200" class="reactor-svg" aria-hidden="true">
+        <circle class="anillo-exterior" cx="100" cy="100" r="88"/>
+        <g class="marcas">
+          <line x1="100" y1="6" x2="100" y2="24"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(15 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(30 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(45 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(60 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(75 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(90 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(105 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(120 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(135 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(150 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(165 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(180 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(195 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(210 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(225 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(240 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(255 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(270 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(285 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(300 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="24" transform="rotate(315 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(330 100 100)"/>
+          <line x1="100" y1="6" x2="100" y2="15" transform="rotate(345 100 100)"/>
+        </g>
+        <circle class="anillo-giro"     cx="100" cy="100" r="76"/>
+        <circle class="anillo-giro-inv" cx="100" cy="100" r="64"/>
+        <g class="segmentos">
+          <circle cx="100" cy="100" r="50"/>
+        </g>
+        <circle class="nucleo-halo" cx="100" cy="100" r="38"/>
+        <circle class="nucleo"      cx="100" cy="100" r="26"/>
+      </svg>
+      <div class="ondas" id="ondas" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <p class="estado-texto" id="estado-texto">dormido</p>
+    <p class="estado-pista" id="estado-pista">Di «Hey Jarvis» o pulsa el botón</p>
+
+    <div class="controles">
+      <button id="btn-escuchar" class="boton boton-principal">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>
+        Escuchar
+      </button>
+      <button id="btn-interrumpir" class="boton boton-secundario" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        Silenciar
+      </button>
+      <button id="btn-pausa" class="boton boton-secundario" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>
+        <span id="btn-pausa-texto">Pausar micrófono</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ── Conversación ──────────────────────────────────────── -->
+  <section class="panel panel-conversacion">
+    <div class="cabecera-panel">
+      <h2 class="titulo-panel">Conversación</h2>
+      <select id="selector-dias" class="selector-dias" hidden>
+        <option value="">En directo</option>
+      </select>
+    </div>
+    <div class="conversacion" id="conversacion">
+      <p class="vacio">Todavía no habéis hablado.</p>
+    </div>
+    <form class="entrada" id="formulario">
+      <input id="campo" type="text" autocomplete="off" spellcheck="false"
+             placeholder="Escribe aquí si prefieres no hablar…">
+      <button type="submit" class="boton boton-enviar" aria-label="Enviar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12 4 5l3 7-3 7z"/></svg>
+      </button>
+    </form>
+  </section>
+
+  <!-- ── Actividad + memoria ───────────────────────────────── -->
+  <div class="columna-lateral">
+    <section class="panel panel-actividad">
+      <h2 class="titulo-panel">Actividad</h2>
+      <ul class="actividad" id="actividad">
+        <li class="vacio">Sin actividad todavía.</li>
+      </ul>
+    </section>
+
+    <section class="panel panel-memoria">
+      <h2 class="titulo-panel">Memoria</h2>
+      <div class="memoria" id="memoria">
+        <p class="vacio">Todavía no recuerda nada.</p>
+      </div>
+    </section>
+  </div>
+
+</main>
+
+<!-- ── Permiso ─────────────────────────────────────────────── -->
+<div class="permiso" id="permiso" hidden>
+  <div class="permiso-caja">
+    <span class="permiso-icono" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"/></svg>
+    </span>
+    <div>
+      <p class="permiso-titulo">Pide autorización</p>
+      <p class="permiso-texto" id="permiso-texto"></p>
+      <p class="permiso-nota">Respóndele en voz alta, o con estos botones.</p>
+      <div class="permiso-botones">
+        <button id="btn-permiso-si" class="boton boton-principal" type="button">Sí</button>
+        <button id="btn-permiso-no" class="boton boton-secundario" type="button">No</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/estaticos/hud.js"></script>
+</body>
+</html>
