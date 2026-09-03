@@ -204,8 +204,8 @@ class TestListaBlancaDeExtensiones:
         monkeypatch.setattr(
             sistema.subprocess, "Popen", lambda cmd: abiertos.append(cmd)
         )
-        respuesta = sistema.abrir("/home/TU-USUARIO/informe.pdf")
-        assert abiertos == [["xdg-open", "/home/TU-USUARIO/informe.pdf"]]
+        respuesta = sistema.abrir("/home/usuario/informe.pdf")
+        assert abiertos == [["xdg-open", "/home/usuario/informe.pdf"]]
         assert "Abriendo" in respuesta
 
     def test_permite_nombre_sin_extension(self, monkeypatch):
