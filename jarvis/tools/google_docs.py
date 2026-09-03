@@ -31,6 +31,7 @@ aquí la única barrera real es la confirmación por voz.
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import tool
@@ -103,6 +104,10 @@ def _credenciales(settings: Settings):  # noqa: ANN202
 
     ruta_token.parent.mkdir(parents=True, exist_ok=True)
     ruta_token.write_text(credenciales.to_json(), encoding="utf-8")
+    # Lleva un refresh_token: mismo criterio que la clave TLS (tls.py), sólo
+    # su dueño debe poder leerlo.
+    with contextlib.suppress(OSError, NotImplementedError):
+        ruta_token.chmod(0o600)
     return credenciales
 
 

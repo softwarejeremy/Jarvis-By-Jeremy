@@ -8,7 +8,10 @@ entendido" no tiene deshacer.
 Tres capas de defensa, de más fuerte a más débil:
 
 1. **Rutas.** Escribir fuera de las carpetas autorizadas se deniega sin
-   preguntar. Ni siquiera llega a consultarte.
+   preguntar. Ni siquiera llega a consultarte. Sólo cubre las herramientas
+   que declaran qué ruta van a tocar (`Write`, `Edit`, `NotebookEdit`):
+   `Bash` y `mcp__jarvis__abrir` no tienen ese campo, así que dependen
+   enteros de la capa 2 — por eso ahí se leen enteros y sin recortar.
 2. **Confirmación hablada.** Escribir, editar o ejecutar exige un "sí" tuyo,
    con el detalle leído en voz alta antes.
 3. **Timeout que deniega.** Si no contestas, la respuesta es no. El silencio
@@ -40,7 +43,6 @@ Confirmador = Callable[[str], Awaitable[bool]]
 # otra cosa.
 PROPIAS_AUTOMATICAS = frozenset({
     "mcp__jarvis__recordar",
-    "mcp__jarvis__olvidar",
     "mcp__jarvis__consultar_memoria",
     "mcp__jarvis__hora",
     "mcp__jarvis__volumen",
@@ -163,8 +165,10 @@ def describir_para_voz(tool_name: str, input_data: dict[str, Any]) -> str:
     porque es justo el detalle que necesitas oír para decidir.
     """
     if tool_name == "Bash":
-        comando = str(input_data.get("command", "")).strip()
-        return f"Voy a ejecutar el comando: {_acortar(comando, 200)}. ¿Lo autoriza?"
+        # Entero y sin recortar: es justo el detalle que hace falta oír para
+        # decidir, y un comando truncado es autorizar lo que no se ha oído.
+        comando = " ".join(str(input_data.get("command", "")).split())
+        return f"Voy a ejecutar el comando: {comando}. ¿Lo autoriza?"
 
     if tool_name in ("Write", "Edit", "NotebookEdit"):
         ruta = input_data.get("file_path") or input_data.get("notebook_path") or ""
@@ -182,6 +186,10 @@ def describir_para_voz(tool_name: str, input_data: dict[str, Any]) -> str:
         objetivo = str(input_data.get("objetivo", "")).strip() or "algo"
         return f"Voy a abrir {objetivo}. ¿Lo autoriza?"
 
+    if tool_name == "mcp__jarvis__olvidar":
+        texto = str(input_data.get("texto", "")).strip() or "algo"
+        return f"Voy a borrar de la memoria lo que contenga «{texto}». ¿Lo autoriza?"
+
     if tool_name == "mcp__jarvis__bloquear_pantalla":
         return "Voy a bloquear la pantalla. ¿Lo autoriza?"
 
@@ -198,13 +206,6 @@ def describir_para_voz(tool_name: str, input_data: dict[str, Any]) -> str:
         return f"Voy a crear el documento de Google {titulo}. ¿Lo autoriza?"
 
     return f"Voy a usar la herramienta {tool_name}. ¿Lo autoriza?"
-
-
-def _acortar(texto: str, limite: int) -> str:
-    texto = " ".join(texto.split())
-    if len(texto) <= limite:
-        return texto
-    return texto[:limite] + "… y algo más, que he omitido por longitud"
 
 
 # ── interpretación del sí y el no ───────────────────────────────────────

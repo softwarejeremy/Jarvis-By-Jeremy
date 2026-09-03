@@ -59,10 +59,13 @@ class TestDescribirParaVoz:
         d = describir_para_voz("Bash", {"command": "rm -rf /tmp/cosas"})
         assert "rm -rf /tmp/cosas" in d
 
-    def test_bash_largo_se_acorta(self):
-        d = describir_para_voz("Bash", {"command": "echo " + "x" * 500})
-        assert len(d) < 300
-        assert "omitido por longitud" in d
+    def test_bash_largo_no_se_acorta(self):
+        # Antes se recortaba a 200 caracteres: autorizabas lo que no habías
+        # oído entero. Ahora se lee completo, por largo que sea.
+        comando = "echo " + "x" * 500
+        d = describir_para_voz("Bash", {"command": comando})
+        assert comando in d
+        assert "omitido" not in d
 
     def test_write_dice_solo_el_nombre_del_archivo(self):
         d = describir_para_voz("Write", {"file_path": "C:/Users/TU-USUARIO/notas.txt"})
@@ -94,6 +97,22 @@ class TestPermissionGuard:
         guard = PermissionGuard(settings, nunca, bus)
         r = await guard("mcp__jarvis__recordar", {"hecho": "le gusta el café"}, None)
         assert r.behavior == "allow"
+
+    async def test_olvidar_sí_pregunta_porque_es_destructiva(self, settings, bus):
+        # A diferencia de `recordar`, borrar memoria no tiene deshacer: no
+        # puede ser automática por el mismo motivo que `Write`/`Edit` no lo
+        # son.
+        preguntas = []
+
+        async def registrar(p: str) -> bool:
+            preguntas.append(p)
+            return True
+
+        guard = PermissionGuard(settings, registrar, bus)
+        r = await guard("mcp__jarvis__olvidar", {"texto": "café"}, None)
+
+        assert r.behavior == "allow"
+        assert len(preguntas) == 1
 
     async def test_escribir_fuera_del_workspace_se_deniega_sin_preguntar(
         self, settings, bus, tmp_path
@@ -209,6 +228,15 @@ class TestDescribirHerramientasPropias:
 
     def test_abrir_sin_objetivo_no_queda_raro(self):
         assert "algo" in describir_para_voz("mcp__jarvis__abrir", {})
+
+    def test_olvidar_dice_qué_va_a_borrar(self):
+        d = describir_para_voz("mcp__jarvis__olvidar", {"texto": "el café"})
+        assert "borrar" in d
+        assert "el café" in d
+        assert "mcp__jarvis__" not in d
+
+    def test_olvidar_sin_texto_no_queda_raro(self):
+        assert "algo" in describir_para_voz("mcp__jarvis__olvidar", {})
 
     def test_bloquear_se_explica_solo(self):
         d = describir_para_voz("mcp__jarvis__bloquear_pantalla", {})

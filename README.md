@@ -345,7 +345,11 @@ subir es su propia confirmación. Lanzar programas no cumple eso, así que pregu
 **No abre intérpretes de comandos** (`cmd`, `powershell`, `bash`…) aunque se lo
 autorices. Todo comando de shell se lee en voz alta antes de ejecutarse; si pudiera
 «abrir» una consola, bastaría eso para ejecutar cualquier cosa sin que nadie la
-enunciara, y el sistema de permisos entero quedaría sin efecto.
+enunciara, y el sistema de permisos entero quedaría sin efecto. Por el mismo
+motivo, tampoco abre archivos por ruta cuya extensión ejecute código por sí
+sola (`.bat`, `.exe`, `.vbs`, `.hta`…): sólo documentos, imágenes y multimedia
+de extensión conocida, o programas por nombre (`spotify`, `notepad`), que
+resuelve el propio sistema operativo.
 
 ### Google Docs
 

@@ -323,6 +323,48 @@ class TestUsaElHiloDaemonCompartido:
         assert llamadas and llamadas[0][0] is google_docs.buscar_doc
 
 
+class TestTokenGuardadoConPermisosRestringidos:
+    """google_token.json lleva un refresh_token: mismo criterio que la
+    clave TLS (tls.py), que ya restringe permisos al guardarse."""
+
+    def test_credenciales_escribe_el_token_con_chmod_600(self, settings, monkeypatch):
+        settings.google.client_secret_path = "client_secret.json"
+
+        class _CredencialesFalsas:
+            expired = False
+            valid = True
+            refresh_token = "algo"
+
+            def to_json(self):
+                return '{"refresh_token": "algo"}'
+
+        class _FlujoFalso:
+            @staticmethod
+            def from_client_secrets_file(_ruta, _scopes):
+                return _FlujoFalso()
+
+            def run_local_server(self, *, port, timeout_seconds):
+                del port, timeout_seconds
+                return _CredencialesFalsas()
+
+        class _CredentialsFalsa:
+            @staticmethod
+            def from_authorized_user_file(_ruta, _scopes):
+                return None
+
+        monkeypatch.setattr(
+            google_docs,
+            "_importar_google",
+            lambda: (object(), _CredentialsFalsa, _FlujoFalso, object()),
+        )
+
+        google_docs._credenciales(settings)
+
+        ruta_token = settings.data_dir / "google_token.json"
+        assert ruta_token.is_file()
+        assert oct(ruta_token.stat().st_mode)[-3:] == "600"
+
+
 class TestRegistro:
     def test_las_herramientas_quedan_registradas(self, settings):
         nombres = {t.name for t in google_docs.herramientas_de_google_docs(settings)}

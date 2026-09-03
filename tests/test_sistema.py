@@ -135,7 +135,8 @@ class TestAbrir:
     @pytest.mark.parametrize(
         "peligroso",
         ["cmd", "cmd.exe", "PowerShell.exe", "pwsh", "bash",
-         "C:/Windows/System32/cmd.exe", "/usr/bin/bash", "regedit"],
+         "C:/Windows/System32/cmd.exe", "/usr/bin/bash", "regedit",
+         "mshta", "mshta.exe", "rundll32.exe", "wt.exe", "wsl", "py.exe"],
     )
     def test_no_abre_interpretes_de_comandos(self, peligroso):
         """La defensa clave.
@@ -173,6 +174,54 @@ class TestAbrir:
 
         monkeypatch.setattr(sistema.subprocess, "Popen", falla)
         assert "No he encontrado" in sistema.abrir("programa-fantasma")
+
+
+class TestListaBlancaDeExtensiones:
+    """PROHIBIDOS sólo ve nombres exactos: `malware.bat` o `cualquiera.exe`
+    no están ahí. Esto es lo que los coge a todos, mirando la extensión."""
+
+    @pytest.mark.parametrize(
+        "peligroso",
+        [
+            r"C:\Descargas\malware.bat",
+            r"C:\Descargas\algo.vbs",
+            r"C:\Descargas\instalador-random.exe",
+            "/tmp/script.sh",
+            r"C:\Descargas\adjunto.hta",
+            r"C:\Descargas\atajo.lnk",
+            r"C:\Descargas\cambio.reg",
+            r"C:\Descargas\paquete.msi",
+        ],
+    )
+    def test_bloquea_extensiones_peligrosas_por_ruta(self, peligroso):
+        respuesta = sistema.abrir(peligroso)
+        assert "No abro" in respuesta
+        assert "extensión" in respuesta
+
+    def test_permite_documento_conocido(self, monkeypatch):
+        abiertos = []
+        monkeypatch.setattr(sistema, "SISTEMA", "Linux")
+        monkeypatch.setattr(
+            sistema.subprocess, "Popen", lambda cmd: abiertos.append(cmd)
+        )
+        respuesta = sistema.abrir("/home/TU-USUARIO/informe.pdf")
+        assert abiertos == [["xdg-open", "/home/TU-USUARIO/informe.pdf"]]
+        assert "Abriendo" in respuesta
+
+    def test_permite_nombre_sin_extension(self, monkeypatch):
+        abiertos = []
+        monkeypatch.setattr(sistema, "SISTEMA", "Linux")
+        monkeypatch.setattr(
+            sistema.subprocess, "Popen", lambda cmd: abiertos.append(cmd)
+        )
+        sistema.abrir("spotify")
+        assert abiertos == [["xdg-open", "spotify"]]
+
+    def test_permite_url_https(self):
+        assert sistema._objetivo_permitido("https://ejemplo.com")
+
+    def test_permite_url_ftp(self):
+        assert sistema._objetivo_permitido("ftp://ejemplo.com/archivo")
 
 
 class TestBloquear:

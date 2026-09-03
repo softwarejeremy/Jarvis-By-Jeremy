@@ -182,12 +182,51 @@ def _confirmacion_medios(accion: str) -> str:
 # J.A.R.V.I.S. pudiera abrirlos, el sistema de permisos —que lee en voz alta
 # los comandos antes de ejecutarlos— quedaría sin efecto, porque bastaría con
 # "abrir" una consola para ejecutar cualquier cosa sin que nadie lo enuncie.
+# Primera barrera, por nombre exacto: se completa con la lista blanca de
+# abajo, que mira la ruta entera en vez de sólo un puñado de nombres.
 PROHIBIDOS = frozenset({
     "cmd", "cmd.exe", "command.com",
     "powershell", "powershell.exe", "pwsh", "pwsh.exe",
     "wscript", "wscript.exe", "cscript", "cscript.exe",
-    "regedit", "regedit.exe", "bash", "sh", "zsh", "python", "python.exe",
+    "regedit", "regedit.exe", "bash", "bash.exe", "sh", "zsh",
+    "python", "python.exe", "py", "py.exe",
+    "mshta", "mshta.exe", "rundll32", "rundll32.exe",
+    "wt", "wt.exe", "wsl", "wsl.exe",
 })
+
+# Segunda barrera: PROHIBIDOS es una lista negra de *nombres*, evadible con
+# sólo cambiar el nombre del archivo ("malware.bat" no es "cmd.exe"). No se
+# puede enumerar cada intérprete de Windows que exista, así que aquí se
+# invierte el criterio: sólo se abren las extensiones que se sabe que son
+# seguras (no ejecutan nada por sí solas). Los nombres sin extensión
+# ("spotify", "notepad") los resuelve el sistema operativo por su cuenta —no
+# son una ruta que alguien haya podido plantar— y las URLs web se dejan
+# pasar aparte.
+_ESQUEMAS_URL = ("http://", "https://", "ftp://")
+
+_EXTENSIONES_SEGURAS = frozenset({
+    # Documentos
+    ".txt", ".md", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".csv", ".rtf", ".odt", ".ods", ".odp",
+    # Imágenes
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".webp", ".ico",
+    # Audio y vídeo
+    ".mp3", ".wav", ".flac", ".ogg", ".m4a", ".mp4", ".mkv", ".avi", ".mov",
+    # Web y datos
+    ".html", ".htm", ".json", ".xml",
+    # Comprimidos: los abre el explorador de archivos, no un intérprete.
+    ".zip", ".rar", ".7z",
+})
+
+
+def _objetivo_permitido(objetivo: str) -> bool:
+    if objetivo.lower().startswith(_ESQUEMAS_URL):
+        return True
+    nombre = objetivo.split("\\")[-1].split("/")[-1]
+    _, punto, extension = nombre.rpartition(".")
+    if not punto:
+        return True
+    return f".{extension.lower()}" in _EXTENSIONES_SEGURAS
 
 
 def abrir(objetivo: str) -> str:
@@ -201,6 +240,14 @@ def abrir(objetivo: str) -> str:
             f"No abro «{objetivo}»: es un intérprete de comandos, y abrirlo "
             "dejaría sin efecto las confirmaciones. Pídame el comando concreto "
             "y se lo leeré antes de ejecutarlo."
+        )
+
+    if not _objetivo_permitido(objetivo):
+        return (
+            f"No abro «{objetivo}»: no reconozco esa extensión como segura, y "
+            "abrirla por ruta esquivaría la confirmación de comandos. Si de "
+            "verdad hace falta, pídame el comando concreto y se lo leeré antes "
+            "de ejecutarlo."
         )
 
     try:
